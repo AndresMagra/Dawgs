@@ -46,7 +46,7 @@ export function PoliciesForm({ value, onSave }: { value: Policies; onSave: (p: P
           keyboardType="number-pad"
           placeholder="0"
         />
-        <P small muted>Managers can also give a one-off discount at check-out, with a reason that prints on the receipt.</P>
+        <P small muted>Managers, and staff you allow under "What staff can do", can also give a one-off discount at check-out, with a reason that prints on the receipt.</P>
       </Card>
       <Card>
         <H2>Cancellations and no-shows</H2>
@@ -94,6 +94,17 @@ export function PoliciesForm({ value, onSave }: { value: Policies; onSave: (p: P
         <Toggle label="Text happy birthday on each dog's birthday" value={p.birthdayTexts} onChange={(v) => set('birthdayTexts', v)} />
         <Toggle label="Also text owners when a report card is sent" value={p.reportCardTexts} onChange={(v) => set('reportCardTexts', v)} />
         <P small muted>Clients who reply STOP never get these.</P>
+      </Card>
+      <Card>
+        <H2>Refer a friend</H2>
+        <Field
+          label="Daycare credits for each friend who becomes a client"
+          value={p.referralRewardCredits ? String(p.referralRewardCredits) : ''}
+          onChangeText={(v) => set('referralRewardCredits', Math.min(20, Math.max(0, Math.round(Number(v) || 0))))}
+          keyboardType="number-pad"
+          placeholder="0 = no reward"
+        />
+        <P small muted>Every client has a share link in their app. When a friend inquires through it and you convert the lead, the credits land on the client's dog.</P>
       </Card>
       <Row>
         <Button variant="primary" title="Save rules" onPress={save} />

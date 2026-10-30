@@ -38,7 +38,7 @@ function monday(key: string) {
 const plus = (key: string, n: number) => new Date(Date.parse(`${key}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 export default function TeamScreen() {
-  const { business, user, isManager } = useSession();
+  const { business, user, isManager, can } = useSession();
   const tz = business?.timezone ?? 'America/New_York';
   const now = useNow(30_000);
   const [tab, setTab] = useState<'clock' | 'schedule' | 'requests' | 'team' | 'payroll'>('clock');
@@ -102,7 +102,7 @@ export default function TeamScreen() {
         <>
           <Row between wrap>
             {weekNav}
-            {isManager ? <Button variant="primary" title="Add shift" onPress={() => setSheet('shift')} /> : null}
+            {can.editSchedule ? <Button variant="primary" title="Add shift" onPress={() => setSheet('shift')} /> : null}
           </Row>
           {Array.from({ length: 7 }, (_, i) => plus(week, i)).map((k) => {
             const list = (shifts.data ?? []).filter((s) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(s.startsAt)) === k);
@@ -115,7 +115,7 @@ export default function TeamScreen() {
                     <P style={s.userId === user?.id ? { fontWeight: '700' } : undefined}>
                       {nameOf(s.userId)} · {time(s.startsAt, tz)}–{time(s.endsAt, tz)}
                     </P>
-                    {isManager ? <Button small variant="ghost" title="Remove" onPress={async () => (await attempt(() => api.del(`/shifts/${s.id}`))) && void shifts.reload()} /> : null}
+                    {can.editSchedule ? <Button small variant="ghost" title="Remove" onPress={async () => (await attempt(() => api.del(`/shifts/${s.id}`))) && void shifts.reload()} /> : null}
                   </Row>
                 ))}
               </Card>

@@ -18,7 +18,7 @@ import {
   payments,
 } from '@dawgs/db';
 import type { AppContext } from '../context.js';
-import { requireManager, requireStaff, sameBusiness } from '../auth.js';
+import { requireManager, requireStaff, requirePermission, sameBusiness } from '../auth.js';
 import { cents, dateKey, parse, payShape, uuid, walletShape } from '../util.js';
 import { createCustomInvoice, sendInvoice, sendsFor } from '../invoicing.js';
 import {
@@ -132,7 +132,7 @@ export function registerCommerceRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.post('/invoices/:id/void', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'void');
     const { id } = req.params as { id: string };
     const [inv] = await ctx.db.select().from(invoices).where(eq(invoices.id, id));
     sameBusiness(a, inv, 'invoice');
@@ -162,7 +162,7 @@ export function registerCommerceRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.post('/payments/:id/refund', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'refund');
     const { id } = req.params as { id: string };
     const { amountCents } = parse(z.object({ amountCents: z.number().int().positive() }), req.body);
     return refundPayment(ctx, { businessId: a.businessId, paymentId: id, amountCents, actor: a.name });

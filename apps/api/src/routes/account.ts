@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { ValidationError } from '@dawgs/core';
 import { addOns, businesses, kennels, pushTokens, sessions, users, walkTypes, yards } from '@dawgs/db';
 import type { AppContext } from '../context.js';
-import { withPolicyDefaults } from '@dawgs/core';
+import { permissionsFor, withPolicyDefaults } from '@dawgs/core';
 import { addOnSettingsShape, slugCode } from '../addons.js';
 import {
   auth,
@@ -96,7 +96,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
     const a = auth(req);
     const [u] = await ctx.db.select().from(users).where(eq(users.id, a.userId));
     const [b] = await ctx.db.select().from(businesses).where(eq(businesses.id, a.businessId));
-    return { user: publicUser(u!), business: publicBusiness(b!) };
+    return { user: publicUser(u!), business: publicBusiness(b!), can: permissionsFor(u!.role, b!.staffPermissions) };
   });
 
   app.post('/auth/logout', async (req) => {
@@ -162,6 +162,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
         pickupTextsEnabled: b!.pickupTextsEnabled,
         invoiceRemindersEnabled: b!.invoiceRemindersEnabled,
         policies: withPolicyDefaults(b!.policies),
+        staffPermissions: permissionsFor('staff', b!.staffPermissions),
         emailMode: ctx.mail.mode,
         plan: b!.plan,
         trialEndsAt: b!.trialEndsAt,
@@ -211,12 +212,21 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
               .partial(),
             birthdayTexts: z.boolean(),
             reportCardTexts: z.boolean(),
+            referralRewardCredits: z.number().int().min(0).max(20),
           })
+          .partial()
+          .optional(),
+        staffPermissions: z
+          .object({ refund: z.boolean(), discount: z.boolean(), void: z.boolean(), seeMoney: z.boolean(), export: z.boolean(), editSchedule: z.boolean() })
           .partial()
           .optional(),
       }),
       req.body,
     );
+    if (b.staffPermissions) {
+      const [cur] = await ctx.db.select({ p: businesses.staffPermissions }).from(businesses).where(eq(businesses.id, a.businessId));
+      (b as { staffPermissions: unknown }).staffPermissions = { ...permissionsFor('staff', cur!.p), ...b.staffPermissions };
+    }
     if (b.policies) {
       // Merge into what is stored so a screen that edits one rule can't wipe the others.
       const [cur] = await ctx.db.select({ p: businesses.policies }).from(businesses).where(eq(businesses.id, a.businessId));

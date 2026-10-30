@@ -25,6 +25,16 @@ export interface PriceList {
   lateCheckout: number;
 }
 
+/** What a staff member may do beyond the basics; managers can do all of it. */
+export interface StaffPermissions {
+  refund: boolean;
+  discount: boolean;
+  void: boolean;
+  seeMoney: boolean;
+  export: boolean;
+  editSchedule: boolean;
+}
+
 export interface Business {
   id: string;
   slug: string;
@@ -92,6 +102,8 @@ export interface Owner {
   vetName: string | null;
   vetPhone: string | null;
   smsOptIn: boolean;
+  /** Asked not to get campaigns; pickup texts and invoices still go out. */
+  marketingOptOut: boolean;
   notes: string | null;
 }
 
@@ -511,4 +523,6 @@ export interface Policies {
   reviewRequests: { enabled: boolean; url: string; everyDays: number };
   birthdayTexts: boolean;
   reportCardTexts: boolean;
+  /** Daycare credits for a client whose referral becomes a client; 0 turns rewards off. */
+  referralRewardCredits: number;
 }

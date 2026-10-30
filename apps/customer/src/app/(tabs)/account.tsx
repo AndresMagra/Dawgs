@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { Platform, Share } from 'react-native';
 import { router } from 'expo-router';
-import { Button, Card, Chip, Field, H2, Line, P, Row, Screen, Toggle } from '@dawgs/ui';
+import { Button, Card, Chip, Field, H2, Line, P, Row, Screen, Toggle, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
-import { attempt } from '../../lib/alert';
 import { defaultCard, useMe } from '../../lib/me';
+import { attempt, say } from '../../lib/alert';
 
 export default function Account() {
   const { business, signOut } = useSession();
@@ -72,13 +73,46 @@ export default function Account() {
             </>
           )}
           <Toggle label="Texts from the daycare (pickup reminders, walk reports)" value={o.smsOptIn} onChange={async (smsOptIn) => (await attempt(() => api.patch('/me', { smsOptIn }))) && void me.reload()} />
+          <Toggle label="Offers and news" value={!o.marketingOptOut} onChange={async (v) => (await attempt(() => api.patch('/me', { marketingOptOut: !v }))) && void me.reload()} />
         </Card>
       ) : null}
+      <ReferFriend />
       <P small muted>
         {business?.name}
         {business?.phone ? ` · ${business.phone}` : ''}
       </P>
       <Button variant="ghost" title="Sign out" onPress={() => void signOut()} />
     </Screen>
+  );
+}
+
+/** Each client's own link to the daycare's inquiry form; a friend who joins through it earns them credits. */
+function ReferFriend() {
+  const r = useLoad(() => api.get<{ url: string | null; referred: number; joined: number; rewardCredits: number }>('/me/referral'), []);
+  const d = r.data;
+  if (!d?.url) return null;
+  const url = d.url;
+  const share = async () => {
+    const message = `I take my dog here and love it. Ask them about a visit: ${url}`;
+    if (Platform.OS === 'web') {
+      const nav = globalThis.navigator as Navigator & { share?: (x: { text: string; url: string }) => Promise<void> };
+      if (nav.share) return nav.share({ text: message, url }).catch(() => undefined);
+      await nav.clipboard?.writeText(url).catch(() => undefined);
+      return say('Link copied', url);
+    }
+    await Share.share({ message });
+  };
+  return (
+    <Card>
+      <H2>Refer a friend</H2>
+      <P small muted>
+        {d.rewardCredits
+          ? `Share your link. When a friend becomes a client, you get ${d.rewardCredits} free daycare day${d.rewardCredits === 1 ? '' : 's'}.`
+          : 'Share your link with a friend who needs a daycare.'}
+      </P>
+      <P small>{url}</P>
+      {d.referred ? <P small muted>{`${d.referred} friend${d.referred === 1 ? '' : 's'} asked · ${d.joined} joined`}</P> : null}
+      <Button variant="primary" title="Share my link" onPress={() => void share()} />
+    </Card>
   );
 }

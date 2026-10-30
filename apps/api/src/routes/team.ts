@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { ConflictError, ValidationError, addLocalDays, dateKeyToInstant, msToHours, weeklyPay, workedMs } from '@dawgs/core';
 import { certifications, chatMessages, chatReads, shifts, staffRequests, timePunches, users } from '@dawgs/db';
 import type { AppContext } from '../context.js';
-import { checkPassword, isManager, publicUser, requireManager, requireStaff, sameBusiness, type AuthContext } from '../auth.js';
+import { checkPassword, isManager, publicUser, requireManager, requireStaff, sameBusiness, requirePermission, type AuthContext } from '../auth.js';
 import { hashPassword } from '../crypto.js';
 import { cents, dateKey, parse, uuid } from '../util.js';
 import { loadBusiness } from '../ops.js';
@@ -202,7 +202,7 @@ export function registerTeamRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.post('/shifts', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'editSchedule');
     const b = parse(z.object({ userId: uuid, startsAt: z.number().int(), endsAt: z.number().int() }), req.body);
     if (b.endsAt <= b.startsAt) throw new ValidationError('shift must end after it starts');
     const [u] = await ctx.db.select().from(users).where(eq(users.id, b.userId));
@@ -216,7 +216,7 @@ export function registerTeamRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.delete('/shifts/:id', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'editSchedule');
     const { id } = req.params as { id: string };
     const [s] = await ctx.db.select().from(shifts).where(eq(shifts.id, id));
     sameBusiness(a, s, 'shift');

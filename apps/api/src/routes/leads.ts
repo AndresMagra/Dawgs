@@ -49,11 +49,11 @@ export function registerLeadRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.post('/public/daycares/:slug/inquiry', { config: { public: true }, bodyLimit: 20_000 }, async (req) => {
     const { slug } = req.params as { slug: string };
-    const b = parse(leadShape.omit({ followUpOn: true, assignedTo: true, source: true }).extend({ website: z.string().optional() }), req.body);
+    const b = parse(leadShape.omit({ followUpOn: true, assignedTo: true, source: true }).extend({ website: z.string().optional(), ref: z.string().max(20).optional() }), req.body);
     // Bots fill every field; people never see this one.
     if (b.website) return { ok: true };
     if (!inquiryAllowed(`${req.ip}:${slug}`, ctx.now())) throw new ValidationError('too many messages; please call us instead');
-    const { website: _honeypot, ...input } = b;
-    return publicInquiry(ctx, slug, input);
+    const { website: _honeypot, ref, ...input } = b;
+    return publicInquiry(ctx, slug, input, ref);
   });
 }

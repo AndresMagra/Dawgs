@@ -38,6 +38,7 @@ export const ownerShape = z.object({
   vetName: z.string().nullable().optional(),
   vetPhone: z.string().nullable().optional(),
   smsOptIn: z.boolean().optional(),
+  marketingOptOut: z.boolean().optional(),
   notes: z.string().nullable().optional(),
 });
 

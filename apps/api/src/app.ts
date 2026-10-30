@@ -23,6 +23,7 @@ import { registerMeRoutes } from './routes/me.js';
 import { registerPickupRoutes } from './routes/pickup.js';
 import { registerLeadRoutes } from './routes/leads.js';
 import { registerReportRoutes } from './routes/reports.js';
+import { registerGrowthRoutes } from './routes/growth.js';
 import { serveSites, type WebSite } from './web.js';
 
 const STATUS: Record<string, number> = {
@@ -86,6 +87,7 @@ export async function buildApp(
       registerPickupRoutes(api, ctx);
       registerLeadRoutes(api, ctx);
       registerReportRoutes(api, ctx);
+      registerGrowthRoutes(api, ctx);
     },
     { prefix: options.apiPrefix ?? '' },
   );

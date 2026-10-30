@@ -103,7 +103,19 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   sent in bulk; `sent_at` is claimed so an owner is told once. Review requests
   after check-out (at most every N days) and birthday texts are derived from
   the text log, never a stored flag.
-- **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
+- **Permissions:** `businesses.staff_permissions` (refund, discount, void,
+  seeMoney, export, editSchedule), read through `permissionsFor` in core and
+  checked with `requirePermission` in `auth.ts`. Managers always pass. The
+  staff app reads `can` from /auth/me; changing money stays manager-only.
+- **Campaigns and referrals:** `growth.ts`. Audiences are derived from visits
+  and memberships; opted-out owners (`marketing_opt_out`) are skipped; texts
+  end with "Reply STOP to opt out.", emails carry the address and an
+  unsubscribe line. Results (bookings, money in 14 days) are derived, not
+  stored. Each owner gets a lazy `referral_code`; `?ref=` on /inquire marks the
+  lead, and converting it grants `referralRewardCredits` to the referrer's dog.
+- **Checklists:** `checklists.ts`. Managers write them; each day's ticks are
+  `checklist_checks` rows (unique per list, day, item).
+ `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.
 - **Vaccines** count only once staff verify them (owner uploads wait).

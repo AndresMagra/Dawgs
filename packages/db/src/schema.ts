@@ -24,7 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { BillLine, HoursPolicy, Policies, PriceList, Wallet } from '@dawgs/core';
+import type { BillLine, HoursPolicy, Policies, PriceList, StaffPermissions, Wallet } from '@dawgs/core';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -45,6 +45,8 @@ export const businesses = pgTable('businesses', {
   hours: jsonb('hours').$type<HoursPolicy>().notNull(),
   /** Tax, tips, discounts, cancellation and online-booking rules; missing keys fall back to DEFAULT_POLICIES. */
   policies: jsonb('policies').$type<Partial<Policies>>().notNull().default({}),
+  /** What staff (not managers) may do: refunds, discounts, voids, money, exports, the schedule. */
+  staffPermissions: jsonb('staff_permissions').$type<Partial<StaffPermissions>>().notNull().default({}),
   daycareCapacity: integer('daycare_capacity').notNull().default(30),
   requiredVaccines: jsonb('required_vaccines').$type<string[]>().notNull(),
   /** Days without a visit before a regular shows on the manager's reminder list. */
@@ -125,6 +127,10 @@ export const owners = pgTable(
     vetName: text('vet_name'),
     vetPhone: text('vet_phone'),
     smsOptIn: boolean('sms_opt_in').notNull().default(true),
+    /** Said no to promotions (campaign emails and texts); service messages still go. */
+    marketingOptOut: boolean('marketing_opt_out').notNull().default(false),
+    /** Their share-a-friend code, made the first time they ask for it. */
+    referralCode: text('referral_code'),
     stripeCustomerId: text('stripe_customer_id'),
     notes: text('notes'),
     createdAt: created(),
@@ -563,6 +569,8 @@ export const leads = pgTable(
     assignedTo: uuid('assigned_to').references(() => users.id),
     /** The owner record this lead became. */
     ownerId: uuid('owner_id').references(() => owners.id),
+    /** The client whose share link brought this lead in. */
+    referredBy: uuid('referred_by').references(() => owners.id),
     createdAt: created(),
     updatedAt: ts('updated_at'),
   },
@@ -724,7 +732,7 @@ export const smsMessages = pgTable('sms_messages', {
   direction: text('direction').$type<'out' | 'in'>().notNull(),
   to: text('to').notNull(),
   body: text('body').notNull(),
-  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'lead' | 'inbound' | 'review' | 'birthday' | 'report_card'>().notNull(),
+  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'lead' | 'inbound' | 'review' | 'birthday' | 'report_card' | 'campaign'>().notNull(),
   status: text('status').$type<'queued' | 'sent' | 'failed' | 'received' | 'skipped'>().notNull(),
   providerId: text('provider_id'),
   error: text('error'),
@@ -733,6 +741,48 @@ export const smsMessages = pgTable('sms_messages', {
   readAt: ts('read_at'),
   createdAt: created(),
 });
+
+/** A message sent to a group of clients, with what came of it. */
+export const campaigns = pgTable('campaigns', {
+  id: id(),
+  businessId: biz(),
+  name: text('name').notNull(),
+  audience: text('audience').$type<'all' | 'active' | 'lapsed' | 'boarding' | 'members' | 'no_visit_yet'>().notNull(),
+  channel: text('channel').$type<'sms' | 'email' | 'both'>().notNull(),
+  subject: text('subject'),
+  body: text('body').notNull(),
+  recipients: jsonb('recipients').$type<string[]>().notNull(),
+  delivered: integer('delivered').notNull().default(0),
+  skipped: integer('skipped').notNull().default(0),
+  sentBy: text('sent_by').notNull(),
+  sentAt: ts('sent_at').notNull(),
+});
+
+/** Opening and closing routines; each day's ticks are rows in `checklist_checks`. */
+export const checklists = pgTable('checklists', {
+  id: id(),
+  businessId: biz(),
+  name: text('name').notNull(),
+  items: jsonb('items').$type<string[]>().notNull(),
+  sort: integer('sort').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+export const checklistChecks = pgTable(
+  'checklist_checks',
+  {
+    id: id(),
+    businessId: biz(),
+    checklistId: uuid('checklist_id')
+      .notNull()
+      .references(() => checklists.id),
+    date: date('date').notNull(),
+    item: text('item').notNull(),
+    doneBy: text('done_by').notNull(),
+    doneAt: ts('done_at').notNull(),
+  },
+  (t) => [uniqueIndex('checklist_checks_once').on(t.checklistId, t.date, t.item)],
+);
 
 export const timePunches = pgTable('time_punches', {
   id: id(),
@@ -974,6 +1024,9 @@ export const schema = {
   kennels,
   bookings,
   bookingSeries,
+  campaigns,
+  checklists,
+  checklistChecks,
   visits,
   visitNotes,
   careTasks,

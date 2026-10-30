@@ -188,6 +188,7 @@ export async function createBooking(
         source,
         notes: input.notes ?? null,
         estimateCents: input.plan === 'full' ? b.prices.fullDay : input.plan === 'half' ? b.prices.halfDay : null,
+        createdAt: new Date(ctx.now()),
       })
       .returning();
     const added = await insertPlanned(ctx, row!.id, extras);
@@ -227,6 +228,7 @@ export async function createBooking(
       source,
       notes: input.notes ?? null,
       estimateCents: estimateStay({ nights: nightsOf(range), kennelType: kennel.type, play: input.play ?? false, prices: b.prices }),
+      createdAt: new Date(ctx.now()),
     })
     .returning();
   const added = await insertPlanned(ctx, row!.id, extras);

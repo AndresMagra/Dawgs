@@ -15,7 +15,7 @@ const INTERESTS = [
 
 /** The daycare's public "ask us anything" form. Each message becomes a lead on the desk. */
 export default function Inquire() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { slug, ref } = useLocalSearchParams<{ slug: string; ref?: string }>();
   const biz = useLoad(() => api.get<Business>(`/public/daycares/${encodeURIComponent(slug ?? '')}`), [slug]);
   const [f, setF] = useState<Record<string, string>>({});
   const [interest, setInterest] = useState<string[]>([]);
@@ -77,6 +77,7 @@ export default function Inquire() {
                           dogBreed: f.dogBreed?.trim() || null,
                           message: f.message?.trim() || null,
                           interest,
+                          ...(ref ? { ref: String(ref).slice(0, 20) } : {}),
                         });
                         setSent(true);
                       } catch (e) {

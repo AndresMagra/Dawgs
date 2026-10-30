@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { creditsText, day, money, time, type Card as SavedCard, type Dog, type AuthorizedPerson, type Invoice, type Membership, type Owner, type SmsMessage, type Waiver, invoiceStage, todayKey } from '@dawgs/client';
-import { Avatar, Button, Card, Chip, Empty, Field, H1, H2, Line, Notice, P, Pick, Row, Screen, Segmented, Sheet, SignaturePad, useLoad } from '@dawgs/ui';
+import { Avatar, Button, Card, Chip, Empty, Field, H1, H2, Line, Notice, P, Pick, Row, Screen, Segmented, Sheet, SignaturePad, Toggle, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
 import { attempt, confirm } from '../../lib/alert';
 import { AddCardSheet, FormSheet, orNull } from '../../lib/sheets';
@@ -48,6 +48,7 @@ export default function OwnerScreen() {
       {o.vetName ? <P small muted>Vet: {o.vetName} {o.vetPhone ?? ''}</P> : null}
       {missing.length ? <Notice tone="bad" text={`Still to sign: ${missing.join(', ')}`} /> : null}
       {balance > 0 ? <Notice tone="warn" text={`Open balance ${money(balance)}`} /> : null}
+      <Toggle label="Include in campaigns and offers" value={!o.marketingOptOut} onChange={async (v) => (await attempt(() => api.patch(`/owners/${o.id}`, { marketingOptOut: !v }))) && reload()} />
       <Row wrap>
         <Button title="Text" disabled={!o.phone} onPress={() => setSheet('text')} />
         <Button title="Collect a signature" onPress={() => setSheet('sign')} />

@@ -46,7 +46,8 @@ const shiftMonth = (m: string, n: number) => {
 const CATEGORY: Record<string, string> = { daycare: 'Daycare', boarding: 'Boarding', packages: 'Packs & memberships', walks: 'Walks', training: 'Training', retail: 'Retail', other: 'Invoices' };
 
 export default function MoneyScreen() {
-  const { business } = useSession();
+  // Staff the manager lets see money can look; changing it stays with managers.
+  const { business, isManager } = useSession();
   const tz = business?.timezone ?? 'America/New_York';
   const [month, setMonth] = useState(todayKey(tz).slice(0, 7));
   const [tab, setTab] = useState<'summary' | 'invoices' | 'expenses' | 'inventory'>('summary');
@@ -95,7 +96,7 @@ export default function MoneyScreen() {
               <Line key={r.category} left={CATEGORY[r.category] ?? r.category} right={money(r.total)} />
             ))}
           </Card>
-          <H2 right={<Button small title="Set budget" onPress={() => setSheet('budget')} />}>Spending against budget</H2>
+          <H2 right={isManager ? <Button small title="Set budget" onPress={() => setSheet('budget')} /> : undefined}>Spending against budget</H2>
           <Card>
             {[...new Set([...s.expenses.map((e) => e.category), ...s.budgets.map((b) => b.category)])].map((c) => {
               const spent = s.expenses.find((e) => e.category === c)?.total ?? 0;
@@ -140,7 +141,7 @@ export default function MoneyScreen() {
 
       {tab === 'expenses' ? (
         <>
-          <Button variant="primary" title="Add expense" onPress={() => setSheet('expense')} />
+          {isManager ? <Button variant="primary" title="Add expense" onPress={() => setSheet('expense')} /> : null}
           {monthExpenses.length === 0 ? <Empty text="No expenses this month." /> : null}
           {monthExpenses.map((e) => (
             <Card key={e.id}>
@@ -154,10 +155,12 @@ export default function MoneyScreen() {
                     {e.note ? ` · ${e.note}` : ''}
                   </P>
                 </View>
+                {isManager ? (
                 <Row>
                   <Button small variant={e.paidAt ? 'secondary' : 'primary'} title={e.paidAt ? 'Paid ✓' : 'Mark paid'} onPress={async () => (await attempt(() => api.patch(`/expenses/${e.id}`, { paid: !e.paidAt }))) && void exp.reload()} />
                   <Button small variant="ghost" title="Delete" onPress={async () => (await confirm('Delete expense?', e.vendor)) && (await attempt(() => api.del(`/expenses/${e.id}`))) && (void exp.reload(), void sum.reload())} />
                 </Row>
+                ) : e.paidAt ? <Chip text="Paid" tone="ok" /> : null}
               </Row>
             </Card>
           ))}
@@ -166,9 +169,9 @@ export default function MoneyScreen() {
 
       {tab === 'inventory' ? (
         <>
-          <Button variant="primary" title="Add item" onPress={() => setSheet('item')} />
+          {isManager ? <Button variant="primary" title="Add item" onPress={() => setSheet('item')} /> : null}
           {inv.data?.map((i) => (
-            <Card key={i.id} onPress={() => setSheet(i)}>
+            <Card key={i.id} onPress={isManager ? () => setSheet(i) : undefined}>
               <Row between>
                 <View>
                   <P bold>{i.name}</P>

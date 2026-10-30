@@ -28,7 +28,7 @@ import {
   waivers,
 } from '@dawgs/db';
 import type { AppContext } from '../context.js';
-import { requireManager, requireStaff, sameBusiness, type AuthContext } from '../auth.js';
+import { requireManager, requireStaff, sameBusiness, requirePermission, type AuthContext } from '../auth.js';
 import { cents, dateKey, parse, payShape, uuid } from '../util.js';
 import { loadBusiness } from '../ops.js';
 import { addProgress, bookPrivate, enroll, enrolledCount, markAttendance, progressFor, roster } from '../training.js';
@@ -391,7 +391,7 @@ export function registerManageRoutes(app: FastifyInstance, ctx: AppContext) {
 
   // ─── Money ───────────────────────────────────────────────────────────────
   app.get('/money/summary', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'seeMoney');
     const b = await loadBusiness(ctx.db, a.businessId);
     const { month } = parse(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() }), req.query);
     const m = month ?? localDateKey(ctx.now(), b.timezone).slice(0, 7);
@@ -435,7 +435,7 @@ export function registerManageRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.get('/expenses', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'seeMoney');
     return ctx.db.select().from(expenses).where(eq(expenses.businessId, a.businessId)).orderBy(desc(expenses.dueDate)).limit(300);
   });
 

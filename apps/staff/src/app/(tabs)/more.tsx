@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import { Avatar, Button, Card, Chip, Grid, H2, P, Row, Screen, useLoad } from '@dawgs/ui';
-import type { ChatChannel } from '@dawgs/client';
+import type { ChatChannel, StaffPermissions } from '@dawgs/client';
 import { api, useSession } from '../../lib/session';
 
-const ITEMS: { href: string; title: string; text: string; manager?: boolean }[] = [
+const ITEMS: { href: string; title: string; text: string; manager?: boolean; needs?: keyof StaffPermissions }[] = [
   { href: '/owners', title: 'Owners', text: 'Clients, cards, invoices, forms' },
   { href: '/leads', title: 'Leads', text: 'Inquiries, tours, follow-ups, new clients' },
   { href: '/run-sheet', title: 'Run sheet', text: 'Pickups, drop-offs and booked services' },
@@ -13,15 +13,17 @@ const ITEMS: { href: string; title: string; text: string; manager?: boolean }[] 
   { href: '/team', title: 'Team', text: 'Clock in, schedule, time off, payroll' },
   { href: '/waivers', title: 'Waivers & forms', text: 'What owners sign, and who signed' },
   { href: '/texts', title: 'Texts', text: 'Conversations with clients, and every text sent' },
+  { href: '/checklists', title: 'Checklists', text: 'Opening, closing and cleaning, ticked off each day' },
   { href: '/report-cards', title: 'Report cards', text: "Write today's, then send them all at once" },
-  { href: '/money', title: 'Money', text: 'Income, expenses, budgets, retail stock', manager: true },
-  { href: '/reports', title: 'Reports', text: 'Revenue, occupancy, top clients, exports', manager: true },
+  { href: '/money', title: 'Money', text: 'Income, expenses, budgets, retail stock', needs: 'seeMoney' },
+  { href: '/reports', title: 'Reports', text: 'Revenue, occupancy, top clients, exports', needs: 'seeMoney' },
+  { href: '/campaigns', title: 'Campaigns', text: 'Text or email a group of clients, and see who came back', manager: true },
   { href: '/settings', title: 'Settings', text: 'Prices, hours, yards, Stripe, Twilio', manager: true },
   { href: '/log', title: 'Activity log', text: 'Who did what, and when', manager: true },
 ];
 
 export default function MoreScreen() {
-  const { user, business, isManager, signOut } = useSession();
+  const { user, business, isManager, can, signOut } = useSession();
   const chat = useLoad(() => api.get<ChatChannel[]>('/chat'), [], 30_000);
   const unread = (chat.data ?? []).reduce((s, c) => s + c.unread, 0);
   const texts = useLoad(() => api.get<{ unread: number }>('/texts/unread'), [], 30_000);
@@ -37,7 +39,7 @@ export default function MoreScreen() {
         <P small muted>{isManager ? 'Manager' : 'Staff'}</P>
       </Card>
       <Grid min={240}>
-        {ITEMS.filter((i) => !i.manager || isManager).map((i) => (
+        {ITEMS.filter((i) => (i.manager ? isManager : i.needs ? can[i.needs] : true)).map((i) => (
           <Card key={i.href} onPress={() => router.push(i.href as never)}>
             <Row between>
               <H2>{i.title}</H2>

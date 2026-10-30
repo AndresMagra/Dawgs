@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { ValidationError, addLocalDays, inactiveDogs, localDateKey, dateKeyToInstant, tipOptions, withPolicyDefaults, type Extras } from '@dawgs/core';
 import { bookings, careTasks, dogs, visits } from '@dawgs/db';
 import type { AppContext } from '../context.js';
-import { requireManager, requireStaff, sameBusiness } from '../auth.js';
+import { requireManager, requirePermission, requireStaff, sameBusiness } from '../auth.js';
 import { dateKey, hhmm, parse, payShape, uuid } from '../util.js';
 import {
   availability,
@@ -167,17 +167,17 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     return moveVisit(ctx, { businessId: a.businessId, visitId: id, actor: a.name, ...b } as Parameters<typeof moveVisit>[1]);
   });
 
-  // A discount needs a reason and a manager; tips are anyone's to take.
+  // A discount needs a reason and a manager (or allowed staff); tips are anyone's to take.
   const extrasShape = z.object({
     discountCents: z.coerce.number().int().min(1).optional(),
     discountPercent: z.coerce.number().min(1).max(100).optional(),
     discountReason: z.string().min(1).max(120).optional(),
     tipCents: z.coerce.number().int().min(0).max(100_000).optional(),
   });
-  const toExtras = (req: Parameters<typeof requireStaff>[0], e: z.infer<typeof extrasShape>): Extras => {
+  const toExtras = async (req: Parameters<typeof requireStaff>[0], e: z.infer<typeof extrasShape>): Promise<Extras> => {
     const discount = e.discountCents || e.discountPercent;
     if (discount) {
-      requireManager(req);
+      await requirePermission(ctx, req, 'discount');
       if (!e.discountReason?.trim()) throw new ValidationError('say why the discount is given');
     }
     return {
@@ -190,7 +190,7 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
     const q = parse(extrasShape.extend({ addOns: z.string().optional() }), req.query);
-    const bill = await previewBill(ctx, a.businessId, id, q.addOns ? q.addOns.split(',').filter(Boolean) : [], toExtras(req, q));
+    const bill = await previewBill(ctx, a.businessId, id, q.addOns ? q.addOns.split(',').filter(Boolean) : [], await toExtras(req, q));
     const b = await loadBusiness(ctx.db, a.businessId);
     return { ...bill, tipOptions: tipOptions(bill, withPolicyDefaults(b.policies)) };
   });
@@ -204,7 +204,7 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
       visitId: id,
       pay: b.pay,
       actor: a.name,
-      extras: toExtras(req, b),
+      extras: await toExtras(req, b),
       ...(b.addOns ? { addOns: b.addOns } : {}),
       ...(b.pickedUpBy ? { pickedUpBy: b.pickedUpBy } : {}),
     });

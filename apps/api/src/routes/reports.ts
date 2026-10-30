@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ValidationError, addLocalDays, localDateKey } from '@dawgs/core';
 import type { AppContext } from '../context.js';
-import { requireManager } from '../auth.js';
+import { requirePermission } from '../auth.js';
 import { dateKey, parse } from '../util.js';
 import { loadBusiness } from '../ops.js';
 import { EXPORTS, creditLiability, exportCsv, occupancy, revenueReport, staffHours, topClients } from '../reports.js';
@@ -22,7 +22,7 @@ export function registerReportRoutes(app: FastifyInstance, ctx: AppContext) {
   };
 
   app.get('/reports', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'seeMoney');
     const { from, to } = await range(a.businessId, req.query);
     const [revenue, clients, nights, credits, hours] = await Promise.all([
       revenueReport(ctx, a.businessId, from, to),
@@ -35,7 +35,7 @@ export function registerReportRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.get('/reports/export', async (req) => {
-    const a = requireManager(req);
+    const a = await requirePermission(ctx, req, 'export');
     const { kind } = parse(z.object({ kind: z.enum(EXPORTS), from: z.string().optional(), to: z.string().optional() }), req.query);
     const { from, to } = await range(a.businessId, req.query);
     // Client lists leave the building; keep a record of who took one.

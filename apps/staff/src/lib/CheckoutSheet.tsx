@@ -16,7 +16,7 @@ export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { vis
     [visitId],
   );
   const [pickedUpBy, setPickedUpBy] = useState<string | null>(null);
-  const { user } = useSession();
+  const { can } = useSession();
   const [tip, setTip] = useState<number>(0);
   const [customTip, setCustomTip] = useState('');
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -112,7 +112,7 @@ export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { vis
               <Field label="Other tip ($)" value={customTip} onChangeText={setCustomTip} keyboardType="decimal-pad" />
             </>
           ) : null}
-          {!openInvoice && user?.role === 'manager' ? (
+          {!openInvoice && can.discount ? (
             discountOpen ? (
               <>
                 <Row>

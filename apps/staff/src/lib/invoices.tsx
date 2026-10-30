@@ -25,7 +25,7 @@ function SendChoice({ email, phone, value, onChange }: { email: string | null; p
 
 /** One invoice: lines, where it stands, send or resend, take payment, refund. */
 export function InvoiceSheet({ invoiceId, hasCard, onClose, onDone }: { invoiceId: string | null; hasCard?: boolean; onClose: () => void; onDone: () => void }) {
-  const { isManager, business } = useSession();
+  const { can, business } = useSession();
   const tz = business?.timezone ?? 'America/New_York';
   const d = useLoad(() => (invoiceId ? api.get<Detail>(`/invoices/${invoiceId}`) : Promise.resolve(null)), [invoiceId]);
   const [send, setSend] = useState({ email: true, sms: true });
@@ -73,7 +73,7 @@ export function InvoiceSheet({ invoiceId, hasCard, onClose, onDone }: { invoiceI
                 {p.status === 'succeeded' ? 'Paid' : 'Failed'} {money(p.amountCents)} by {p.method} · {day(p.createdAt, tz)}
                 {p.refundedCents ? ` · refunded ${money(p.refundedCents)}` : ''}
               </P>
-              {isManager && p.status === 'succeeded' && p.refundedCents < p.amountCents ? (
+              {can.refund && p.status === 'succeeded' && p.refundedCents < p.amountCents ? (
                 <Button
                   small
                   variant="ghost"
@@ -109,7 +109,7 @@ export function InvoiceSheet({ invoiceId, hasCard, onClose, onDone }: { invoiceI
               <Row wrap>
                 <Button title="Charge card on file" disabled={hasCard === false} onPress={() => pay('card')} />
                 <Button title="Cash" onPress={() => pay('cash')} />
-                {isManager ? <Button variant="ghost" title="Void" onPress={async () => (await confirm('Void invoice?', 'It will no longer be owed.')) && (await attempt(() => api.post(`/invoices/${invoiceId}/void`, {}))) && reload()} /> : null}
+                {can.void ? <Button variant="ghost" title="Void" onPress={async () => (await confirm('Void invoice?', 'It will no longer be owed.')) && (await attempt(() => api.post(`/invoices/${invoiceId}/void`, {}))) && reload()} /> : null}
               </Row>
               <Row>
                 <Field label="Due date (YYYY-MM-DD)" value={due ?? inv.dueDate ?? ''} onChangeText={setDue} />

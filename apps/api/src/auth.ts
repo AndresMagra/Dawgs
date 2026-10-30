@@ -13,7 +13,7 @@
 
 import { and, eq, gt, lt } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { DawgsError, ValidationError } from '@dawgs/core';
+import { DawgsError, ValidationError, permissionsFor, type Permission } from '@dawgs/core';
 import { authorizedPeople, businesses, owners, sessions, users } from '@dawgs/db';
 import type { AppContext } from './context.js';
 import { hashPassword, hashToken, randomToken, verifyPassword } from './crypto.js';
@@ -67,6 +67,15 @@ export function requireStaff(req: FastifyRequest): AuthContext {
 export function requireManager(req: FastifyRequest): AuthContext {
   const a = auth(req);
   if (a.role !== 'manager') throw new ForbiddenError('managers only');
+  return a;
+}
+
+/** A manager, or a staff member the manager has allowed to do this. */
+export async function requirePermission(ctx: AppContext, req: FastifyRequest, perm: Permission): Promise<AuthContext> {
+  const a = requireStaff(req);
+  if (a.role === 'manager') return a;
+  const [b] = await ctx.db.select({ p: businesses.staffPermissions }).from(businesses).where(eq(businesses.id, a.businessId));
+  if (!permissionsFor(a.role, b?.p)[perm]) throw new ForbiddenError('ask a manager to do this, or to allow it for staff in Settings');
   return a;
 }
 

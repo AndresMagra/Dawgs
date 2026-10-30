@@ -29,6 +29,8 @@ export interface Policies {
   birthdayTexts: boolean;
   /** Also text the owner when a report card is sent (it always appears in their app). */
   reportCardTexts: boolean;
+  /** Daycare credits given to a client when someone they referred becomes a client. */
+  referralRewardCredits: number;
 }
 
 export const DEFAULT_POLICIES: Policies = {
@@ -45,6 +47,7 @@ export const DEFAULT_POLICIES: Policies = {
   reviewRequests: { enabled: false, url: '', everyDays: 90 },
   birthdayTexts: false,
   reportCardTexts: false,
+  referralRewardCredits: 0,
 };
 
 /** Older rows and partial edits are filled from the defaults, so every rule always has a value. */
@@ -115,4 +118,23 @@ export function lateCancelFee(policies: Policies, firstDay: string, tz: string, 
   if (!policies.lateCancelFeeCents) return 0;
   const start = dateKeyToInstant(firstDay, tz);
   return start - now < policies.cancelWindowHours * 3_600_000 ? policies.lateCancelFeeCents : 0;
+}
+
+/** What a staff member (not a manager) may do; managers can always do everything. */
+export interface StaffPermissions {
+  refund: boolean;
+  discount: boolean;
+  void: boolean;
+  seeMoney: boolean;
+  export: boolean;
+  editSchedule: boolean;
+}
+export type Permission = keyof StaffPermissions;
+
+export const DEFAULT_STAFF_PERMISSIONS: StaffPermissions = { refund: false, discount: false, void: false, seeMoney: false, export: false, editSchedule: false };
+
+export function permissionsFor(role: string, stored: Partial<StaffPermissions> | null | undefined): StaffPermissions {
+  if (role === 'manager') return { refund: true, discount: true, void: true, seeMoney: true, export: true, editSchedule: true };
+  if (role !== 'staff') return { ...DEFAULT_STAFF_PERMISSIONS };
+  return { ...DEFAULT_STAFF_PERMISSIONS, ...(stored ?? {}) };
 }

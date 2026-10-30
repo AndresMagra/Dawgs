@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import * as Linking from 'expo-linking';
-import { addOnPrice, money, type AddOn, type Business, type Policies, type PriceList, type WalkType } from '@dawgs/client';
+import { addOnPrice, money, type AddOn, type Business, type Policies, type PriceList, type StaffPermissions, type WalkType } from '@dawgs/client';
 import { Button, Card, Chip, Field, H2, Line, Notice, P, Row, Screen, Segmented, Sheet, Toggle, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../lib/session';
 import { attempt, confirm, say } from '../lib/alert';
@@ -17,6 +17,7 @@ interface Settings {
     pickupTextsEnabled: boolean;
     invoiceRemindersEnabled: boolean;
     policies: Policies;
+    staffPermissions: StaffPermissions;
     emailMode: 'console' | 'resend';
     plan: string;
     trialEndsAt: string | null;
@@ -41,12 +42,21 @@ const PRICE_LABELS: Record<keyof PriceList, string> = {
   lateCheckout: 'Late boarding checkout',
 };
 
+const PERMISSIONS: [keyof StaffPermissions, string][] = [
+  ['discount', 'Give discounts at check-out'],
+  ['refund', 'Refund payments'],
+  ['void', 'Void invoices'],
+  ['seeMoney', 'See money and reports'],
+  ['export', 'Export client and sales lists'],
+  ['editSchedule', 'Add and remove shifts on the schedule'],
+];
+
 type ListPath = 'yards' | 'kennels' | 'walk-types';
 
 export default function SettingsScreen() {
   const { refresh } = useSession();
   const s = useLoad(() => api.get<Settings>('/settings'), []);
-  const [tab, setTab] = useState<'business' | 'prices' | 'rooms' | 'services' | 'policies' | 'payments' | 'texts'>('business');
+  const [tab, setTab] = useState<'business' | 'prices' | 'rooms' | 'services' | 'policies' | 'staff' | 'payments' | 'texts'>('business');
   const [sheet, setSheet] = useState<null | 'business' | 'prices' | 'twilio' | { path: ListPath; row?: Record<string, unknown> }>(null);
   const [testTo, setTestTo] = useState('');
   const [addOn, setAddOn] = useState<AddOn | 'new' | null>(null);
@@ -75,6 +85,7 @@ export default function SettingsScreen() {
           { value: 'rooms', label: 'Yards & kennels' },
           { value: 'services', label: 'Add-ons & walks' },
           { value: 'policies', label: 'Tax, tips & booking rules' },
+          { value: 'staff', label: 'What staff can do' },
           { value: 'payments', label: 'Payments' },
           { value: 'texts', label: 'Texts' },
         ]}
@@ -154,6 +165,16 @@ export default function SettingsScreen() {
             </Card>
           ))}
         </>
+      ) : null}
+
+      {tab === 'staff' ? (
+        <Card>
+          <H2>What staff can do</H2>
+          <P small muted>Managers can always do all of this. Changes apply the next time staff open the app.</P>
+          {PERMISSIONS.map(([k, label]) => (
+            <Toggle key={k} label={label} value={b.staffPermissions[k]} onChange={(v) => void patch({ staffPermissions: { [k]: v } })} />
+          ))}
+        </Card>
       ) : null}
 
       {tab === 'policies' ? <PoliciesForm key={JSON.stringify(b.policies)} value={b.policies} onSave={(policies) => patch({ policies })} /> : null}

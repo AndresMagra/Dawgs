@@ -115,6 +115,7 @@ CREATE TABLE "businesses" (
 	"prices" jsonb NOT NULL,
 	"hours" jsonb NOT NULL,
 	"policies" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"staff_permissions" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"daycare_capacity" integer DEFAULT 30 NOT NULL,
 	"required_vaccines" jsonb NOT NULL,
 	"inactive_after_days" integer DEFAULT 21 NOT NULL,
@@ -131,6 +132,21 @@ CREATE TABLE "businesses" (
 	"twilio_from" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "businesses_slug_unique" UNIQUE("slug")
+);
+--> statement-breakpoint
+CREATE TABLE "campaigns" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"audience" text NOT NULL,
+	"channel" text NOT NULL,
+	"subject" text,
+	"body" text NOT NULL,
+	"recipients" jsonb NOT NULL,
+	"delivered" integer DEFAULT 0 NOT NULL,
+	"skipped" integer DEFAULT 0 NOT NULL,
+	"sent_by" text NOT NULL,
+	"sent_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "care_tasks" (
@@ -167,6 +183,25 @@ CREATE TABLE "chat_reads" (
 	"user_id" uuid NOT NULL,
 	"channel" text NOT NULL,
 	"read_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "checklist_checks" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"checklist_id" uuid NOT NULL,
+	"date" date NOT NULL,
+	"item" text NOT NULL,
+	"done_by" text NOT NULL,
+	"done_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "checklists" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"items" jsonb NOT NULL,
+	"sort" integer DEFAULT 0 NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "credit_grants" (
@@ -299,6 +334,7 @@ CREATE TABLE "leads" (
 	"reminded_on" date,
 	"assigned_to" uuid,
 	"owner_id" uuid,
+	"referred_by" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone
 );
@@ -330,6 +366,8 @@ CREATE TABLE "owners" (
 	"vet_name" text,
 	"vet_phone" text,
 	"sms_opt_in" boolean DEFAULT true NOT NULL,
+	"marketing_opt_out" boolean DEFAULT false NOT NULL,
+	"referral_code" text,
 	"stripe_customer_id" text,
 	"notes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -675,6 +713,7 @@ ALTER TABLE "bookings" ADD CONSTRAINT "bookings_business_id_businesses_id_fk" FO
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_kennel_id_kennels_id_fk" FOREIGN KEY ("kennel_id") REFERENCES "public"."kennels"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "budgets" ADD CONSTRAINT "budgets_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "campaigns" ADD CONSTRAINT "campaigns_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "care_tasks" ADD CONSTRAINT "care_tasks_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "care_tasks" ADD CONSTRAINT "care_tasks_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "care_tasks" ADD CONSTRAINT "care_tasks_visit_id_visits_id_fk" FOREIGN KEY ("visit_id") REFERENCES "public"."visits"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -683,6 +722,9 @@ ALTER TABLE "certifications" ADD CONSTRAINT "certifications_user_id_users_id_fk"
 ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_from_user_id_users_id_fk" FOREIGN KEY ("from_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_reads" ADD CONSTRAINT "chat_reads_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "checklist_checks" ADD CONSTRAINT "checklist_checks_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "checklist_checks" ADD CONSTRAINT "checklist_checks_checklist_id_checklists_id_fk" FOREIGN KEY ("checklist_id") REFERENCES "public"."checklists"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "checklists" ADD CONSTRAINT "checklists_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "credit_grants" ADD CONSTRAINT "credit_grants_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "credit_grants" ADD CONSTRAINT "credit_grants_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "credit_grants" ADD CONSTRAINT "credit_grants_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -701,6 +743,7 @@ ALTER TABLE "lead_activities" ADD CONSTRAINT "lead_activities_lead_id_leads_id_f
 ALTER TABLE "leads" ADD CONSTRAINT "leads_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "leads" ADD CONSTRAINT "leads_assigned_to_users_id_fk" FOREIGN KEY ("assigned_to") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "leads" ADD CONSTRAINT "leads_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "leads" ADD CONSTRAINT "leads_referred_by_owners_id_fk" FOREIGN KEY ("referred_by") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -772,6 +815,7 @@ CREATE INDEX "bookings_series" ON "bookings" USING btree ("series_id");--> state
 CREATE UNIQUE INDEX "budgets_cat_month" ON "budgets" USING btree ("business_id","category","month");--> statement-breakpoint
 CREATE INDEX "chat_channel" ON "chat_messages" USING btree ("business_id","channel","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "chat_reads_user_channel" ON "chat_reads" USING btree ("user_id","channel");--> statement-breakpoint
+CREATE UNIQUE INDEX "checklist_checks_once" ON "checklist_checks" USING btree ("checklist_id","date","item");--> statement-breakpoint
 CREATE INDEX "dogs_owner" ON "dogs" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "dogs_business" ON "dogs" USING btree ("business_id");--> statement-breakpoint
 CREATE INDEX "invoice_sends_invoice" ON "invoice_sends" USING btree ("invoice_id");--> statement-breakpoint

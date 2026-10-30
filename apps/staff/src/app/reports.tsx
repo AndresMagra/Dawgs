@@ -53,7 +53,7 @@ async function download(filename: string, csv: string) {
 }
 
 export default function ReportsScreen() {
-  const { business } = useSession();
+  const { business, can } = useSession();
   const tz = business?.timezone ?? 'America/New_York';
   const today = todayKey(tz);
   const [span, setSpan] = useState<'7' | '30' | 'month' | 'year'>('30');
@@ -122,6 +122,7 @@ export default function ReportsScreen() {
               ))}
             </Card>
           </Grid>
+          {can.export ? (
           <Card>
             <H2>Export to a spreadsheet</H2>
             <P small muted>CSV files for Excel, Google Sheets or your accountant, for the dates above.</P>
@@ -139,6 +140,7 @@ export default function ReportsScreen() {
               ))}
             </Row>
           </Card>
+          ) : null}
         </>
       ) : null}
     </Screen>

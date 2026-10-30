@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { localDateKey, NotFoundError, ValidationError } from '@dawgs/core';
 import { businesses, dogs, leadActivities, leads, owners, smsMessages, users } from '@dawgs/db';
 import type { AppContext } from './context.js';
+import { ownerByReferralCode, rewardReferral } from './growth.js';
 import { audit } from './audit.js';
 import { pushToUsers } from './texts.js';
 import { toE164 } from './sms.js';
@@ -42,7 +43,7 @@ async function log(ctx: AppContext, l: { id: string; businessId: string }, kind:
   await ctx.db.insert(leadActivities).values({ businessId: l.businessId, leadId: l.id, kind, body, by, at: new Date(ctx.now()) });
 }
 
-export async function createLead(ctx: AppContext, args: { businessId: string; input: LeadInput; actor: string; source?: LeadInput['source'] }) {
+export async function createLead(ctx: AppContext, args: { businessId: string; input: LeadInput; actor: string; source?: LeadInput['source']; referredBy?: string }) {
   const i = args.input;
   if (!i.email && !i.phone) throw new ValidationError('add an email or a phone number so you can reach them');
   if (i.assignedTo) await assertStaff(ctx, args.businessId, i.assignedTo);
@@ -61,6 +62,7 @@ export async function createLead(ctx: AppContext, args: { businessId: string; in
       message: i.message ?? null,
       followUpOn: i.followUpOn ?? null,
       assignedTo: i.assignedTo ?? null,
+      referredBy: args.referredBy ?? null,
       createdAt: new Date(ctx.now()),
     })
     .returning();
@@ -161,7 +163,8 @@ export async function convertLead(ctx: AppContext, args: { businessId: string; l
   await ctx.db.update(leads).set({ ownerId: owner!.id, stage: 'won', followUpOn: null, updatedAt: new Date(ctx.now()) }).where(eq(leads.id, l.id));
   await log(ctx, l, 'stage', `${STAGE_NAME[l.stage]} → Won: now a client`, args.actor);
   await audit(ctx.db, args.businessId, args.actor, 'lead.convert', `Lead ${l.name} became a client`);
-  return { ownerId: owner!.id, dogId };
+  const reward = l.referredBy && l.referredBy !== owner!.id ? await rewardReferral(ctx, args.businessId, l.referredBy, l.name) : null;
+  return { ownerId: owner!.id, dogId, referralRewarded: !!reward };
 }
 
 export async function leadDetail(ctx: AppContext, businessId: string, id: string) {
@@ -200,10 +203,12 @@ export function inquiryAllowed(key: string, now: number) {
 }
 
 /** From the daycare's website: a new lead, a push to the managers, and a thank-you email. */
-export async function publicInquiry(ctx: AppContext, slug: string, input: LeadInput) {
+export async function publicInquiry(ctx: AppContext, slug: string, input: LeadInput, ref?: string) {
   const [b] = await ctx.db.select().from(businesses).where(eq(businesses.slug, slug.toLowerCase()));
   if (!b) throw new NotFoundError('daycare');
-  const l = await createLead(ctx, { businessId: b.id, input, source: 'website', actor: 'Website form' });
+  // An unknown code is simply ignored: the inquiry matters more than the credit.
+  const referredBy = ref ? await ownerByReferralCode(ctx, b.id, ref) : null;
+  const l = await createLead(ctx, { businessId: b.id, input, source: referredBy ? 'referral' : 'website', actor: 'Website form', ...(referredBy ? { referredBy } : {}) });
   const managers = await ctx.db.select({ id: users.id }).from(users).where(and(eq(users.businessId, b.id), eq(users.role, 'manager'), eq(users.active, true)));
   await pushToUsers(ctx, managers.map((m) => m.id), 'New inquiry', `${l.name}${l.dogName ? ` (${l.dogName})` : ''} asked about ${l.interest.length ? l.interest.join(', ') : 'your daycare'}.`, { leadId: l.id });
   if (looksLikeEmail(l.email)) {
