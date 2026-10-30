@@ -21,6 +21,7 @@ import { registerTeamRoutes } from './routes/team.js';
 import { registerManageRoutes } from './routes/manage.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerPickupRoutes } from './routes/pickup.js';
+import { serveSites, type WebSite } from './web.js';
 
 const STATUS: Record<string, number> = {
   VALIDATION: 400,
@@ -32,7 +33,10 @@ const STATUS: Record<string, number> = {
   STRIPE_NOT_CONNECTED: 409,
 };
 
-export async function buildApp(ctx: AppContext, options: { logger?: boolean; corsOrigins?: string[] | true } = {}): Promise<FastifyInstance> {
+export async function buildApp(
+  ctx: AppContext,
+  options: { logger?: boolean; corsOrigins?: string[] | true; apiPrefix?: string; sites?: WebSite[] } = {},
+): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 1_000_000, trustProxy: true });
   await app.register(cors, { origin: options.corsOrigins ?? true });
 
@@ -63,16 +67,24 @@ export async function buildApp(ctx: AppContext, options: { logger?: boolean; cor
 
   app.get('/health', { config: { public: true } }, async () => ({ ok: true }));
 
-  registerAuth(app, ctx);
-  registerAccountRoutes(app, ctx);
-  registerPeopleRoutes(app, ctx);
-  registerOperationsRoutes(app, ctx);
-  registerCommerceRoutes(app, ctx);
-  registerTextRoutes(app, ctx);
-  registerWalkRoutes(app, ctx);
-  registerTeamRoutes(app, ctx);
-  registerManageRoutes(app, ctx);
-  registerMeRoutes(app, ctx);
-  registerPickupRoutes(app, ctx);
+  // The auth hook and every route live in one scope, so the hook covers all of
+  // them; when the web apps are served from the same box, the API moves under a prefix.
+  await app.register(
+    async (api) => {
+      registerAuth(api, ctx);
+      registerAccountRoutes(api, ctx);
+      registerPeopleRoutes(api, ctx);
+      registerOperationsRoutes(api, ctx);
+      registerCommerceRoutes(api, ctx);
+      registerTextRoutes(api, ctx);
+      registerWalkRoutes(api, ctx);
+      registerTeamRoutes(api, ctx);
+      registerManageRoutes(api, ctx);
+      registerMeRoutes(api, ctx);
+      registerPickupRoutes(api, ctx);
+    },
+    { prefix: options.apiPrefix ?? '' },
+  );
+  if (options.sites?.length) serveSites(app, options.sites);
   return app;
 }

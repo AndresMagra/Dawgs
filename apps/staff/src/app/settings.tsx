@@ -166,7 +166,7 @@ export default function SettingsScreen() {
                 variant="primary"
                 title="Connect Stripe"
                 onPress={async () => {
-                  const returnUrl = Platform.OS === 'web' ? `${window.location.origin}/stripe-return` : Linking.createURL('/stripe-return');
+                  const returnUrl = Platform.OS === 'web' ? `${window.location.origin}${process.env.EXPO_PUBLIC_BASE_URL ?? ''}/stripe-return` : Linking.createURL('/stripe-return');
                   const r = await attempt(() => api.post<{ url: string }>('/settings/stripe/connect', { returnUrl }));
                   if (r) await Linking.openURL(r.url);
                 }}

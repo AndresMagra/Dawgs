@@ -24,6 +24,11 @@ if (!env.RESEND_API_KEY || !env.DAWGS_MAIL_FROM) {
   console.warn('RESEND_API_KEY / DAWGS_MAIL_FROM not set: emails are logged, not sent');
 }
 const ctx = await contextFromEnv(env);
-const app = await buildApp(ctx, { logger: true, corsOrigins: (env.DAWGS_CORS_ORIGINS ?? env.DAWGS_PUBLIC_URL!).split(',') });
+const web = env.DAWGS_WEB_DIR;
+const app = await buildApp(ctx, {
+  logger: true,
+  corsOrigins: (env.DAWGS_CORS_ORIGINS ?? env.DAWGS_PUBLIC_URL!).split(','),
+  ...(web ? { apiPrefix: '/api', sites: [{ prefix: '', dir: `${web}/customer` }, { prefix: '/staff', dir: `${web}/staff` }] } : {}),
+});
 startScheduler(ctx);
 await app.listen({ port: Number(env.PORT ?? 3001), host: '0.0.0.0' });
