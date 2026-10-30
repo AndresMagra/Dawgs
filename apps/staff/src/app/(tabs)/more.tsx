@@ -14,6 +14,7 @@ const ITEMS: { href: string; title: string; text: string; manager?: boolean }[] 
   { href: '/waivers', title: 'Waivers & forms', text: 'What owners sign, and who signed' },
   { href: '/texts', title: 'Texts', text: 'Every text sent and received' },
   { href: '/money', title: 'Money', text: 'Income, expenses, budgets, retail stock', manager: true },
+  { href: '/reports', title: 'Reports', text: 'Revenue, occupancy, top clients, exports', manager: true },
   { href: '/settings', title: 'Settings', text: 'Prices, hours, yards, Stripe, Twilio', manager: true },
   { href: '/log', title: 'Activity log', text: 'Who did what, and when', manager: true },
 ];

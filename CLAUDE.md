@@ -91,6 +91,11 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   (weekdays, until, at most 6 months; owners capped at the online-booking
   window); each day is an ordinary booking with `series_id`. Days already
   booked or full are skipped; stopping cancels from a date with normal fees.
+- **Reports:** `reports.ts`, managers only, ranges of local days (a year at
+  most). Revenue is payments net of refunds, with tips and tax shown apart;
+  prepaid liability values unused credits at what was paid for them (gifts
+  $0). CSV exports defuse formula cells and are written to the activity log.
+  Payments are stamped by the database clock, so tests use wide ranges.
 - **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.
