@@ -1,0 +1,76 @@
+/**
+ * HTTP API: error mapping, authentication, and the route modules.
+ *
+ * As in MeDu, every screen of every app uses exactly these routes, and the
+ * auth hook is installed before any route so a new route is closed by
+ * default (see auth.ts).
+ */
+
+import Fastify, { type FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
+import { DawgsError } from '@dawgs/core';
+import type { AppContext } from './context.js';
+import { registerAuth } from './auth.js';
+import { registerAccountRoutes } from './routes/account.js';
+import { registerPeopleRoutes } from './routes/people.js';
+import { registerOperationsRoutes } from './routes/operations.js';
+import { registerCommerceRoutes } from './routes/commerce.js';
+import { registerTextRoutes } from './routes/texts.js';
+import { registerWalkRoutes } from './routes/walks.js';
+import { registerTeamRoutes } from './routes/team.js';
+import { registerManageRoutes } from './routes/manage.js';
+import { registerMeRoutes } from './routes/me.js';
+
+const STATUS: Record<string, number> = {
+  VALIDATION: 400,
+  UNAUTHORIZED: 401,
+  PAYMENT_FAILED: 402,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  STRIPE_NOT_CONNECTED: 409,
+};
+
+export async function buildApp(ctx: AppContext, options: { logger?: boolean; corsOrigins?: string[] | true } = {}): Promise<FastifyInstance> {
+  const app = Fastify({ logger: options.logger ?? false, bodyLimit: 1_000_000, trustProxy: true });
+  await app.register(cors, { origin: options.corsOrigins ?? true });
+
+  // Keep the raw JSON body: Stripe signs the exact bytes it sent.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    (req as unknown as { rawBody: string }).rawBody = body as string;
+    if (!body) return done(null, {});
+    try {
+      done(null, JSON.parse(body as string));
+    } catch {
+      done(new DawgsError('VALIDATION', 'body is not valid JSON'), undefined);
+    }
+  });
+  // Twilio posts forms.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(body as string)));
+  });
+
+  app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof DawgsError) {
+      return reply.code(STATUS[err.code] ?? 400).send({ error: err.code, message: err.message });
+    }
+    const e = err as { statusCode?: number; message?: string };
+    if (e.statusCode && e.statusCode < 500) return reply.code(e.statusCode).send({ error: 'BAD_REQUEST', message: e.message });
+    app.log.error(err);
+    return reply.code(500).send({ error: 'INTERNAL', message: 'something went wrong' });
+  });
+
+  app.get('/health', { config: { public: true } }, async () => ({ ok: true }));
+
+  registerAuth(app, ctx);
+  registerAccountRoutes(app, ctx);
+  registerPeopleRoutes(app, ctx);
+  registerOperationsRoutes(app, ctx);
+  registerCommerceRoutes(app, ctx);
+  registerTextRoutes(app, ctx);
+  registerWalkRoutes(app, ctx);
+  registerTeamRoutes(app, ctx);
+  registerManageRoutes(app, ctx);
+  registerMeRoutes(app, ctx);
+  return app;
+}

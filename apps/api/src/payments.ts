@@ -23,11 +23,13 @@ import {
   paymentMethods,
   payments,
   type Database,
+  type Fulfilment,
 } from '@dawgs/db';
 import type { AppContext } from './context.js';
 import type { PayInput } from './util.js';
 import { hashToken } from './crypto.js';
 import { audit } from './audit.js';
+import { fulfilInvoice } from './fulfil.js';
 
 export type InvoiceCategory = (typeof invoices.$inferSelect)['category'];
 
@@ -40,6 +42,7 @@ export async function createInvoice(
     visitId?: string | null;
     category: InvoiceCategory;
     lines: BillLine[];
+    fulfilment?: Fulfilment | null;
   },
 ) {
   const total = args.lines.reduce((s, l) => s + l.amount, 0);
@@ -62,9 +65,11 @@ export async function createInvoice(
           visitId: args.visitId ?? null,
           category: args.category,
           lines: args.lines,
+          fulfilment: args.fulfilment ?? null,
           totalCents: total,
-          status: total === 0 ? 'paid' : 'open',
-          paidAt: total === 0 ? new Date() : null,
+          // Even a $0 invoice starts open: payInvoice settles it, which is
+          // also what runs its fulfilment.
+          status: 'open',
         })
         .returning();
       return inv!;
@@ -93,7 +98,8 @@ export async function ensureStripeCustomer(ctx: AppContext, ownerId: string): Pr
   const [o] = await ctx.db.select().from(owners).where(eq(owners.id, ownerId));
   if (!o) throw new NotFoundError('owner');
   if (o.stripeCustomerId) return o.stripeCustomerId;
-  const id = await ctx.payments.createCustomer({ name: o.name, email: o.email, phone: o.phone, ownerId: o.id });
+  const gw = await ctx.gatewayFor(o.businessId);
+  const id = await gw.createCustomer({ name: o.name, email: o.email, phone: o.phone, ownerId: o.id });
   await ctx.db.update(owners).set({ stripeCustomerId: id }).where(eq(owners.id, ownerId));
   return id;
 }
@@ -101,9 +107,10 @@ export async function ensureStripeCustomer(ctx: AppContext, ownerId: string): Pr
 /** Save a card the app confirmed with Stripe's UI. The first card becomes the default. */
 export async function saveCard(ctx: AppContext, businessId: string, ownerId: string, stripePaymentMethodId: string) {
   const customerId = await ensureStripeCustomer(ctx, ownerId);
-  const pm = await ctx.payments.retrievePaymentMethod(stripePaymentMethodId);
+  const gw = await ctx.gatewayFor(businessId);
+  const pm = await gw.retrievePaymentMethod(stripePaymentMethodId);
   if (pm.customerId && pm.customerId !== customerId) throw new ValidationError('that card belongs to someone else');
-  if (!pm.customerId) await ctx.payments.attachPaymentMethod(stripePaymentMethodId, customerId);
+  if (!pm.customerId) await gw.attachPaymentMethod(stripePaymentMethodId, customerId);
   const existing = await ctx.db.select().from(paymentMethods).where(eq(paymentMethods.ownerId, ownerId));
   const dup = existing.find((c) => c.stripePaymentMethodId === stripePaymentMethodId);
   if (dup) return dup;
@@ -126,7 +133,8 @@ export async function saveCard(ctx: AppContext, businessId: string, ownerId: str
 export async function removeCard(ctx: AppContext, ownerId: string, cardId: string) {
   const [c] = await ctx.db.select().from(paymentMethods).where(eq(paymentMethods.id, cardId));
   if (!c || c.ownerId !== ownerId) throw new NotFoundError('card');
-  await ctx.payments.detachPaymentMethod(c.stripePaymentMethodId).catch(() => undefined);
+  const gw = await ctx.gatewayFor(c.businessId);
+  await gw.detachPaymentMethod(c.stripePaymentMethodId).catch(() => undefined);
   await ctx.db.delete(paymentMethods).where(eq(paymentMethods.id, cardId));
   if (c.isDefault) {
     const [next] = await ctx.db.select().from(paymentMethods).where(eq(paymentMethods.ownerId, ownerId)).limit(1);
@@ -144,9 +152,10 @@ export async function setDefaultCard(ctx: AppContext, ownerId: string, cardId: s
 export const cardLabel = (c: { brand: string; last4: string }) =>
   `${c.brand.charAt(0).toUpperCase()}${c.brand.slice(1)} •••• ${c.last4}`;
 
-async function markPaidIfSettled(db: Database, invoiceId: string, total: number) {
-  if ((await paidSoFar(db, invoiceId)) >= total) {
-    await db.update(invoices).set({ status: 'paid', paidAt: new Date() }).where(eq(invoices.id, invoiceId));
+async function markPaidIfSettled(ctx: AppContext, invoiceId: string, total: number) {
+  if ((await paidSoFar(ctx.db, invoiceId)) >= total) {
+    await ctx.db.update(invoices).set({ status: 'paid', paidAt: new Date(ctx.now()) }).where(eq(invoices.id, invoiceId));
+    await fulfilInvoice(ctx, invoiceId);
     return true;
   }
   return false;
@@ -173,7 +182,7 @@ export async function payInvoice(
   if (inv.status !== 'open') throw new ValidationError(`invoice is ${inv.status}`);
   const due = inv.totalCents - (await paidSoFar(ctx.db, inv.id));
   if (args.pay.method === 'later' || due <= 0) {
-    const paid = due <= 0 ? await markPaidIfSettled(ctx.db, inv.id, inv.totalCents) : false;
+    const paid = due <= 0 ? await markPaidIfSettled(ctx, inv.id, inv.totalCents) : false;
     return { invoice: await loadInvoice(ctx.db, args.businessId, inv.id), paid };
   }
 
@@ -187,7 +196,7 @@ export async function payInvoice(
       status: 'succeeded',
       takenBy: args.actor,
     });
-    await markPaidIfSettled(ctx.db, inv.id, inv.totalCents);
+    await markPaidIfSettled(ctx, inv.id, inv.totalCents);
     await audit(ctx.db, inv.businessId, args.actor, 'payment.cash', `Invoice #${inv.number}: ${formatMoney(due)} cash`);
     return { invoice: await loadInvoice(ctx.db, args.businessId, inv.id), paid: true };
   }
@@ -199,7 +208,8 @@ export async function payInvoice(
   if (!card) throw new PaymentError('no card on file for this owner');
   const customerId = await ensureStripeCustomer(ctx, inv.ownerId);
   const attempt = (await ctx.db.select({ id: payments.id }).from(payments).where(eq(payments.invoiceId, inv.id))).length;
-  const result = await ctx.payments.chargeSavedCard({
+  const gw = await ctx.gatewayFor(inv.businessId);
+  const result = await gw.chargeSavedCard({
     customerId,
     paymentMethodId: card.stripePaymentMethodId,
     amountCents: due,
@@ -224,7 +234,7 @@ export async function payInvoice(
     await audit(ctx.db, inv.businessId, args.actor, 'payment.declined', `Invoice #${inv.number}: ${cardLabel(card)} declined (${result.message})`);
     return { invoice: inv, paid: false, declined: { message: result.message, code: result.declineCode } };
   }
-  await markPaidIfSettled(ctx.db, inv.id, inv.totalCents);
+  await markPaidIfSettled(ctx, inv.id, inv.totalCents);
   await audit(ctx.db, inv.businessId, args.actor, 'payment.card', `Invoice #${inv.number}: ${formatMoney(due)} on ${cardLabel(card)}`);
   return { invoice: await loadInvoice(ctx.db, args.businessId, inv.id), paid: true };
 }
@@ -240,7 +250,7 @@ export async function refundPayment(
   if (args.amountCents <= 0 || args.amountCents > refundable)
     throw new ValidationError(`can refund up to ${formatMoney(refundable)}`);
   if (p.method !== 'cash' && p.stripePaymentIntentId) {
-    await ctx.payments.refund({ paymentIntentId: p.stripePaymentIntentId, amountCents: args.amountCents });
+    await (await ctx.gatewayFor(p.businessId)).refund({ paymentIntentId: p.stripePaymentIntentId, amountCents: args.amountCents });
   }
   await ctx.db
     .update(payments)
@@ -289,19 +299,23 @@ async function linkByToken(ctx: AppContext, token: string) {
 export async function openPayLink(ctx: AppContext, token: string) {
   const { inv, biz } = await linkByToken(ctx, token);
   const due = inv.totalCents - (await paidSoFar(ctx.db, inv.id));
+  const gw = await ctx.gatewayFor(inv.businessId);
   const base = {
     business: biz.name,
+    brandColor: biz.brandColor,
+    logoUrl: biz.logoUrl,
     number: inv.number,
     lines: inv.lines,
     totalCents: inv.totalCents,
     dueCents: Math.max(0, due),
     status: inv.status,
-    mode: ctx.payments.mode,
-    publishableKey: ctx.payments.publishableKey,
+    mode: gw.mode,
+    publishableKey: gw.publishableKey,
+    stripeAccount: biz.stripeAccountId,
   };
   if (inv.status !== 'open' || due <= 0) return { ...base, clientSecret: null, paymentIntentId: null };
   const customerId = await ensureStripeCustomer(ctx, inv.ownerId);
-  const pi = await ctx.payments.createPaymentIntent({
+  const pi = await gw.createPaymentIntent({
     amountCents: due,
     customerId,
     description: `${biz.name} invoice #${inv.number}`,
@@ -316,18 +330,18 @@ export async function openPayLink(ctx: AppContext, token: string) {
  * app checkout). Called by the webhook and by the app's "I'm done" poll;
  * whichever arrives second finds the payment already recorded.
  */
-export async function recordIntentSucceeded(ctx: AppContext, paymentIntentId: string) {
+export async function recordIntentSucceeded(ctx: AppContext, businessId: string, paymentIntentId: string) {
   const [already] = await ctx.db
     .select({ id: payments.id })
     .from(payments)
     .where(and(eq(payments.stripePaymentIntentId, paymentIntentId), eq(payments.status, 'succeeded')));
   if (already) return { recorded: false };
-  const pi = await ctx.payments.retrievePaymentIntent(paymentIntentId);
+  const pi = await (await ctx.gatewayFor(businessId)).retrievePaymentIntent(paymentIntentId);
   if (pi.status !== 'succeeded') return { recorded: false };
   const invoiceId = pi.metadata.invoiceId;
   if (!invoiceId) return { recorded: false };
   const [inv] = await ctx.db.select().from(invoices).where(eq(invoices.id, invoiceId));
-  if (!inv) return { recorded: false };
+  if (!inv || inv.businessId !== businessId) return { recorded: false };
   await ctx.db.insert(payments).values({
     businessId: inv.businessId,
     invoiceId: inv.id,
@@ -341,13 +355,9 @@ export async function recordIntentSucceeded(ctx: AppContext, paymentIntentId: st
     takenBy: pi.metadata.via === 'link' ? 'Pay link' : 'Customer app',
   });
   await ctx.db.update(paymentLinks).set({ usedAt: new Date(ctx.now()) }).where(eq(paymentLinks.invoiceId, inv.id));
-  await markPaidIfSettled(ctx.db, inv.id, inv.totalCents);
+  await markPaidIfSettled(ctx, inv.id, inv.totalCents);
   await audit(ctx.db, inv.businessId, 'Stripe', 'payment.online', `Invoice #${inv.number}: ${formatMoney(pi.amountCents)} paid online`);
   return { recorded: true, invoiceId: inv.id, metadata: pi.metadata };
-}
-
-export async function payLinkIntent(ctx: AppContext, token: string) {
-  return linkByToken(ctx, token);
 }
 
 export async function invoicesFor(db: Database, where: { businessId: string; ownerId?: string }, limit = 100) {

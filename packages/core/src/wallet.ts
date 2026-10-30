@@ -5,12 +5,12 @@
  * ("Biscuit has 6 days left"). A package grants credits; a visit spends them.
  */
 
-export const CREDIT_KINDS = ['daycare', 'night', 'walk', 'bath'] as const;
+export const CREDIT_KINDS = ['daycare', 'night', 'walk', 'bath', 'training'] as const;
 export type CreditKind = (typeof CREDIT_KINDS)[number];
 export type Wallet = Record<CreditKind, number>;
 
 export function emptyWallet(): Wallet {
-  return { daycare: 0, night: 0, walk: 0, bath: 0 };
+  return { daycare: 0, night: 0, walk: 0, bath: 0, training: 0 };
 }
 
 export function addCredits(w: Wallet, add: Partial<Wallet>): Wallet {

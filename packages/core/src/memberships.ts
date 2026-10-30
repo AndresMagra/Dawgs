@@ -10,7 +10,7 @@
  */
 
 import type { Wallet } from './wallet.js';
-import { CREDIT_KINDS } from './wallet.js';
+import { CREDIT_KINDS, emptyWallet } from './wallet.js';
 
 export const RETRY_EVERY_DAYS = 3;
 export const MAX_FAILED_CHARGES = 4;
@@ -29,7 +29,7 @@ export interface MembershipPlan {
  * caller passes only the membership's own balance in `membershipLeft`.
  */
 export function renewCredits(plan: MembershipPlan, membershipLeft: Partial<Wallet>): Wallet {
-  const out = { daycare: 0, night: 0, walk: 0, bath: 0 };
+  const out = emptyWallet();
   for (const k of CREDIT_KINDS) {
     const carried = Math.min(membershipLeft[k] ?? 0, plan.rolloverMax);
     out[k] = carried + (plan.credits[k] ?? 0);

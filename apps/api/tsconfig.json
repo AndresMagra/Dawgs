@@ -1,7 +1,22 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "./src", "outDir": "./dist" },
-  "include": ["src/**/*"],
-  "exclude": ["**/*.test.ts"],
-  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/db" }]
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "exactOptionalPropertyTypes": false
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "**/*.test.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/db"
+    }
+  ]
 }

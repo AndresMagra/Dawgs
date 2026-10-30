@@ -152,7 +152,7 @@ describe('kennels', () => {
 describe('memberships', () => {
   it('rolls over up to the cap and adds the month', () => {
     expect(renewCredits({ credits: { daycare: 12 }, rolloverMax: 2 }, { daycare: 5 })).toEqual({
-      daycare: 14, night: 0, walk: 0, bath: 0,
+      daycare: 14, night: 0, walk: 0, bath: 0, training: 0,
     });
   });
   it('retries every 3 days and cancels on the 4th failure', () => {

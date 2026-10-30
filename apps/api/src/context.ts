@@ -37,4 +37,6 @@ export interface AppContext {
   readonly publicUrl: string | null;
   /** Anyone may create an owner account from the customer app. */
   readonly ownerSignupOpen: boolean;
+  /** New daycares may sign up for a trial from the website. */
+  readonly daycareSignupOpen: boolean;
 }

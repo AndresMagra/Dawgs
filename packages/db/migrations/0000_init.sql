@@ -174,6 +174,8 @@ CREATE TABLE "invoices" (
 	"lines" jsonb NOT NULL,
 	"total_cents" integer NOT NULL,
 	"status" text NOT NULL,
+	"fulfilment" jsonb,
+	"fulfilled_at" timestamp with time zone,
 	"paid_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -337,6 +339,69 @@ CREATE TABLE "time_punches" (
 	"user_id" uuid NOT NULL,
 	"in_at" timestamp with time zone NOT NULL,
 	"out_at" timestamp with time zone
+);
+--> statement-breakpoint
+CREATE TABLE "training_attendance" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"session_id" uuid NOT NULL,
+	"dog_id" uuid NOT NULL,
+	"attended" boolean NOT NULL,
+	"note" text
+);
+--> statement-breakpoint
+CREATE TABLE "training_enrollments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"program_id" uuid NOT NULL,
+	"dog_id" uuid NOT NULL,
+	"status" text NOT NULL,
+	"invoice_id" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "training_programs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"kind" text NOT NULL,
+	"session_count" integer DEFAULT 1 NOT NULL,
+	"session_minutes" integer DEFAULT 60 NOT NULL,
+	"capacity" integer DEFAULT 1 NOT NULL,
+	"price_cents" integer NOT NULL,
+	"trainer_id" uuid,
+	"skills" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"sell_online" boolean DEFAULT true NOT NULL,
+	"active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "training_progress" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"dog_id" uuid NOT NULL,
+	"program_id" uuid,
+	"skill" text NOT NULL,
+	"level" integer NOT NULL,
+	"note" text,
+	"homework" text,
+	"shared_with_owner" boolean DEFAULT true NOT NULL,
+	"author" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "training_sessions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"program_id" uuid NOT NULL,
+	"trainer_id" uuid,
+	"starts_at" timestamp with time zone NOT NULL,
+	"ends_at" timestamp with time zone NOT NULL,
+	"location" text,
+	"dog_id" uuid,
+	"status" text DEFAULT 'scheduled' NOT NULL,
+	"notes" text
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -527,6 +592,21 @@ ALTER TABLE "staff_requests" ADD CONSTRAINT "staff_requests_business_id_business
 ALTER TABLE "staff_requests" ADD CONSTRAINT "staff_requests_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "time_punches" ADD CONSTRAINT "time_punches_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "time_punches" ADD CONSTRAINT "time_punches_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_attendance" ADD CONSTRAINT "training_attendance_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_attendance" ADD CONSTRAINT "training_attendance_session_id_training_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."training_sessions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_attendance" ADD CONSTRAINT "training_attendance_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_enrollments" ADD CONSTRAINT "training_enrollments_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_enrollments" ADD CONSTRAINT "training_enrollments_program_id_training_programs_id_fk" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_enrollments" ADD CONSTRAINT "training_enrollments_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_programs" ADD CONSTRAINT "training_programs_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_programs" ADD CONSTRAINT "training_programs_trainer_id_users_id_fk" FOREIGN KEY ("trainer_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_progress" ADD CONSTRAINT "training_progress_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_progress" ADD CONSTRAINT "training_progress_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_progress" ADD CONSTRAINT "training_progress_program_id_training_programs_id_fk" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_sessions" ADD CONSTRAINT "training_sessions_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_sessions" ADD CONSTRAINT "training_sessions_program_id_training_programs_id_fk" FOREIGN KEY ("program_id") REFERENCES "public"."training_programs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_sessions" ADD CONSTRAINT "training_sessions_trainer_id_users_id_fk" FOREIGN KEY ("trainer_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "training_sessions" ADD CONSTRAINT "training_sessions_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vaccines" ADD CONSTRAINT "vaccines_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vaccines" ADD CONSTRAINT "vaccines_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -560,6 +640,8 @@ CREATE INDEX "dogs_owner" ON "dogs" USING btree ("owner_id");--> statement-break
 CREATE INDEX "dogs_business" ON "dogs" USING btree ("business_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invoices_number" ON "invoices" USING btree ("business_id","number");--> statement-breakpoint
 CREATE INDEX "owners_business" ON "owners" USING btree ("business_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "training_attendance_once" ON "training_attendance" USING btree ("session_id","dog_id");--> statement-breakpoint
+CREATE INDEX "training_sessions_time" ON "training_sessions" USING btree ("business_id","starts_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_email" ON "users" USING btree ("business_id","email");--> statement-breakpoint
 CREATE INDEX "visits_open" ON "visits" USING btree ("business_id","checked_out_at");--> statement-breakpoint
 CREATE INDEX "waiver_sigs_owner" ON "waiver_signatures" USING btree ("owner_id");--> statement-breakpoint

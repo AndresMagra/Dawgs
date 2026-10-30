@@ -21,6 +21,7 @@ export const walletShape = z.object({
   night: z.number().int().min(0).optional(),
   walk: z.number().int().min(0).optional(),
   bath: z.number().int().min(0).optional(),
+  training: z.number().int().min(0).optional(),
 });
 
 /** How a sale is settled at the counter or in the app. */

@@ -384,6 +384,11 @@ export const memberships = pgTable('memberships', {
   createdAt: created(),
 });
 
+export type Fulfilment =
+  | { type: 'package'; packageId: string; dogId: string }
+  | { type: 'membership'; membershipId: string }
+  | { type: 'training'; enrollmentId: string };
+
 export const invoices = pgTable(
   'invoices',
   {
@@ -396,11 +401,14 @@ export const invoices = pgTable(
     dogId: uuid('dog_id').references(() => dogs.id),
     visitId: uuid('visit_id'),
     category: text('category')
-      .$type<'daycare' | 'boarding' | 'packages' | 'walks' | 'retail'>()
+      .$type<'daycare' | 'boarding' | 'packages' | 'walks' | 'training' | 'retail'>()
       .notNull(),
     lines: jsonb('lines').$type<BillLine[]>().notNull(),
     totalCents: integer('total_cents').notNull(),
     status: text('status').$type<'open' | 'paid' | 'refunded' | 'partially_refunded' | 'void'>().notNull(),
+    /** What to hand over once paid (credits for a pack, a membership month). Done once. */
+    fulfilment: jsonb('fulfilment').$type<Fulfilment | null>(),
+    fulfilledAt: ts('fulfilled_at'),
     paidAt: ts('paid_at'),
     createdAt: created(),
   },
@@ -605,6 +613,98 @@ export const budgets = pgTable(
 );
 
 /**
+ * Training: group classes (a course of weekly sessions with a capacity) and
+ * private lessons (one dog, one trainer, one session at a time).
+ */
+export const trainingPrograms = pgTable('training_programs', {
+  id: id(),
+  businessId: biz(),
+  name: text('name').notNull(),
+  description: text('description'),
+  kind: text('kind').$type<'class' | 'private'>().notNull(),
+  /** Sessions in the course; 1 for a private lesson. */
+  sessionCount: integer('session_count').notNull().default(1),
+  sessionMinutes: integer('session_minutes').notNull().default(60),
+  capacity: integer('capacity').notNull().default(1),
+  priceCents: integer('price_cents').notNull(),
+  trainerId: uuid('trainer_id').references(() => users.id),
+  /** Skills tracked for progress, e.g. ["Sit", "Down", "Loose-leash walking"]. */
+  skills: jsonb('skills').$type<string[]>().notNull().default([]),
+  sellOnline: boolean('sell_online').notNull().default(true),
+  active: boolean('active').notNull().default(true),
+  createdAt: created(),
+});
+
+export const trainingSessions = pgTable(
+  'training_sessions',
+  {
+    id: id(),
+    businessId: biz(),
+    programId: uuid('program_id')
+      .notNull()
+      .references(() => trainingPrograms.id),
+    trainerId: uuid('trainer_id').references(() => users.id),
+    startsAt: ts('starts_at').notNull(),
+    endsAt: ts('ends_at').notNull(),
+    location: text('location'),
+    /** For private lessons: the one dog booked into it. */
+    dogId: uuid('dog_id').references(() => dogs.id),
+    status: text('status').$type<'scheduled' | 'done' | 'cancelled'>().notNull().default('scheduled'),
+    notes: text('notes'),
+  },
+  (t) => [index('training_sessions_time').on(t.businessId, t.startsAt)],
+);
+
+export const trainingEnrollments = pgTable('training_enrollments', {
+  id: id(),
+  businessId: biz(),
+  programId: uuid('program_id')
+    .notNull()
+    .references(() => trainingPrograms.id),
+  dogId: uuid('dog_id')
+    .notNull()
+    .references(() => dogs.id),
+  status: text('status').$type<'pending_payment' | 'enrolled' | 'completed' | 'dropped'>().notNull(),
+  invoiceId: uuid('invoice_id'),
+  createdAt: created(),
+});
+
+export const trainingAttendance = pgTable(
+  'training_attendance',
+  {
+    id: id(),
+    businessId: biz(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => trainingSessions.id),
+    dogId: uuid('dog_id')
+      .notNull()
+      .references(() => dogs.id),
+    attended: boolean('attended').notNull(),
+    note: text('note'),
+  },
+  (t) => [uniqueIndex('training_attendance_once').on(t.sessionId, t.dogId)],
+);
+
+/** A trainer's mark on one skill for one dog. The latest per skill is the dog's level. */
+export const trainingProgress = pgTable('training_progress', {
+  id: id(),
+  businessId: biz(),
+  dogId: uuid('dog_id')
+    .notNull()
+    .references(() => dogs.id),
+  programId: uuid('program_id').references(() => trainingPrograms.id),
+  skill: text('skill').notNull(),
+  /** 0 not started · 1 learning · 2 with help · 3 reliable · 4 mastered */
+  level: integer('level').notNull(),
+  note: text('note'),
+  homework: text('homework'),
+  sharedWithOwner: boolean('shared_with_owner').notNull().default(true),
+  author: text('author').notNull(),
+  createdAt: created(),
+});
+
+/**
  * Waivers and liability forms a manager writes and can require.
  *
  * Editing the text makes a new version; a signature is for one version and
@@ -702,6 +802,11 @@ export const schema = {
   certifications,
   expenses,
   budgets,
+  trainingPrograms,
+  trainingSessions,
+  trainingEnrollments,
+  trainingAttendance,
+  trainingProgress,
   waivers,
   waiverSignatures,
   auditLog,
