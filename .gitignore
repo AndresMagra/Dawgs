@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.turbo/
+.expo/
+.env
+data/
+web-build/
+ios/
+android/

@@ -1,0 +1,23 @@
+{
+  "name": "@dawgs/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "node --watch dist/server.js",
+    "start": "node dist/server.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dawgs/core": "workspace:*",
+    "@dawgs/db": "workspace:*",
+    "@fastify/cors": "^11.1.0",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.6.1",
+    "stripe": "^23.1.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": { "typescript": "^5.9.2", "vitest": "^3.2.4" }
+}
