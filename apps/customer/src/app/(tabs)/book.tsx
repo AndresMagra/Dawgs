@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { dateKeyLabel, money, todayKey, type AddOn, type AddOnRequest, type Booking, type BookingAddOn } from '@dawgs/client';
-import { AddOnPicker, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
+import { AddOnPicker, WeekdayPicker, weekdayNames, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
 import { attempt, confirm, say } from '../../lib/alert';
 import { useMe } from '../../lib/me';
@@ -35,6 +35,10 @@ export default function Book() {
   const [play, setPlay] = useState(true);
   const [pickup, setPickup] = useState<string | null>('17:00');
   const [extras, setExtras] = useState<AddOnRequest[]>([]);
+  const [repeat, setRepeat] = useState(false);
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [until, setUntil] = useState(todayKey(tz, 56));
+  const series = useLoad(() => api.get<{ id: string; dog: string; weekdays: number[]; plan: string; untilDate: string }[]>('/me/booking-series'), []);
   const [adding, setAdding] = useState<Booking | null>(null);
   const menu = useLoad(() => api.get<{ addOns: AddOn[]; address: string | null }>('/me/add-ons'), []);
   const valid = (k: string) => /^\d{4}-\d{2}-\d{2}$/.test(k);
@@ -56,6 +60,21 @@ export default function Book() {
 
   async function book() {
     if (!dog) return;
+    if (service === 'daycare' && repeat) {
+      const r = await attempt(() =>
+        api.post<{ booked: number; waitlisted: number; skipped: { date: string }[]; until: string }>('/me/booking-series', { dogId: dog.id, weekdays, plan, pickupTime: pickup, from: date, until }),
+      );
+      if (!r) return;
+      say(
+        `${r.booked} days requested`,
+        [r.until < until ? `Bookings open up to ${dateKeyLabel(r.until)}, so the schedule stops there for now.` : '', r.skipped.length ? `Skipped: ${r.skipped.map((x) => dateKeyLabel(x.date)).join(', ')}.` : ''].filter(Boolean).join(' '),
+      );
+      setRepeat(false);
+      setWeekdays([]);
+      void list.reload();
+      void series.reload();
+      return;
+    }
     const body =
       service === 'daycare'
         ? { dogId: dog.id, service, plan, date, pickupTime: pickup }
@@ -91,7 +110,14 @@ export default function Book() {
           <Segmented value={service} onChange={setService} options={[{ value: 'daycare', label: 'Daycare' }, { value: 'boarding', label: 'Boarding' }]} />
           {service === 'daycare' ? (
             <>
-              <Field label="Day (YYYY-MM-DD)" value={date} onChangeText={setDate} />
+              <Field label={repeat ? 'Starting (YYYY-MM-DD)' : 'Day (YYYY-MM-DD)'} value={date} onChangeText={setDate} />
+              <Toggle label="Every week" value={repeat} onChange={setRepeat} />
+              {repeat ? (
+                <>
+                  <WeekdayPicker value={weekdays} onChange={setWeekdays} />
+                  <Field label="Until (YYYY-MM-DD)" value={until} onChangeText={setUntil} />
+                </>
+              ) : null}
               <Segmented value={plan} onChange={setPlan} options={[{ value: 'full', label: `Full day ${money(business?.prices.fullDay ?? 0)}` }, { value: 'half', label: `Half day ${money(business?.prices.halfDay ?? 0)}` }]} />
               <Pick label="Pickup around" value={pickup} onChange={setPickup} options={['12:00', '15:00', '16:00', '17:00', '18:00'].map((h) => ({ value: h, label: h }))} />
               {avail.data?.available !== undefined ? <Notice tone={avail.data.available ? 'ok' : 'warn'} text={avail.data.available ? 'There is room that day.' : "That day is full. You can join the waitlist."} /> : null}
@@ -129,8 +155,33 @@ export default function Book() {
               {`Free to cancel up to ${business.bookingPolicy.cancelWindowHours} hours before.${business.bookingPolicy.lateCancelFeeCents ? ` Later than that: ${money(business.bookingPolicy.lateCancelFeeCents)}.` : ''}${business.bookingPolicy.noShowFeeCents ? ` No-show: ${money(business.bookingPolicy.noShowFeeCents)}.` : ''}`}
             </P>
           ) : null}
-          <Button variant="primary" title={service === 'daycare' && avail.data?.available === false ? 'Join the waitlist' : 'Request booking'} disabled={!dog?.canEnter || (service === 'boarding' && !kennel)} onPress={book} />
+          <Button variant="primary" title={service === 'daycare' && avail.data?.available === false ? 'Join the waitlist' : 'Request booking'} disabled={!dog?.canEnter || (service === 'boarding' && !kennel) || (service === 'daycare' && repeat && !weekdays.length)} onPress={book} />
         </Card>
+      ) : null}
+
+      {series.data?.length ? (
+        <>
+          <H2>Every week</H2>
+          {series.data.map((x) => (
+            <Card key={x.id}>
+              <Row between>
+                <P>{`${x.dog}: ${weekdayNames(x.weekdays)}, until ${dateKeyLabel(x.untilDate)}`}</P>
+                <Button
+                  small
+                  variant="ghost"
+                  title="Stop"
+                  onPress={async () => {
+                    if (!(await confirm('Stop this weekly schedule?', 'Days from tomorrow on are cancelled.'))) return;
+                    if (await attempt(() => api.post(`/me/booking-series/${x.id}/stop`, { from: todayKey(tz, 1) }))) {
+                      void series.reload();
+                      void list.reload();
+                    }
+                  }}
+                />
+              </Row>
+            </Card>
+          ))}
+        </>
       ) : null}
 
       <H2>Your bookings</H2>

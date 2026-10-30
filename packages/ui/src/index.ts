@@ -4,3 +4,4 @@ export * from './data';
 export * from './RouteMap';
 export * from './SignaturePad';
 export * from './AddOnPicker';
+export * from './WeekdayPicker';

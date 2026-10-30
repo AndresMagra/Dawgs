@@ -121,3 +121,16 @@ export function addLocalDays(key: string, n: number): string {
   const dt = new Date(Date.UTC(y!, m! - 1, d! + n));
   return dt.toISOString().slice(0, 10);
 }
+
+/** Day of the week for a `YYYY-MM-DD` key, 0 = Sunday. Calendar arithmetic, so no time zone is involved. */
+export function weekdayOf(key: string): number {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+}
+
+/** Every date from `from` to `until` (inclusive) that falls on one of `weekdays`. */
+export function datesOnWeekdays(from: string, until: string, weekdays: readonly number[]): string[] {
+  const out: string[] = [];
+  for (let k = from; k <= until; k = addLocalDays(k, 1)) if (weekdays.includes(weekdayOf(k))) out.push(k);
+  return out;
+}

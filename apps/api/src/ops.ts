@@ -133,7 +133,7 @@ async function assertDogMayCome(db: Database, businessId: string, dogId: string,
 }
 
 export type BookingInput =
-  | { dogId: string; service: 'daycare'; plan: 'half' | 'full' | 'hourly'; date: string; pickupTime?: string | null; notes?: string | null; addOns?: AddOnRequest[] }
+  | { dogId: string; service: 'daycare'; plan: 'half' | 'full' | 'hourly'; date: string; pickupTime?: string | null; notes?: string | null; addOns?: AddOnRequest[]; seriesId?: string }
   | {
       dogId: string;
       service: 'boarding';
@@ -183,6 +183,7 @@ export async function createBooking(
         plan: input.plan,
         date: input.date,
         pickupTime: input.pickupTime ?? null,
+        seriesId: input.seriesId ?? null,
         status,
         source,
         notes: input.notes ?? null,

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { BOOKING_STATUS, dateKeyLabel, money, todayKey, type AddOn, type AddOnRequest, type Booking, type Dog } from '@dawgs/client';
-import { AddOnPicker, Avatar, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
+import { AddOnPicker, WeekdayPicker, weekdayNames, Avatar, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
-import { attempt, say } from '../../lib/alert';
+import { attempt, confirm, say } from '../../lib/alert';
 import { DogPicker } from '../../lib/DogPicker';
 
 export default function BookingsScreen() {
@@ -23,6 +23,7 @@ export default function BookingsScreen() {
   const requests = (list.data?.bookings ?? []).filter((b) => b.status === 'requested').length;
 
   const { user } = useSession();
+  const series = useLoad(() => api.get<{ id: string; dog: string; weekdays: number[]; plan: string; untilDate: string }[]>('/booking-series'), []);
   async function setStatus(id: string, status: string, waiveFee = false) {
     const r = await attempt(() => api.post<{ feeInvoiceId: string | null }>(`/bookings/${id}/status`, { status, ...(waiveFee ? { waiveFee } : {}) }));
     if (!r) return;
@@ -44,6 +45,28 @@ export default function BookingsScreen() {
         />
         <Button variant="primary" title="New booking" onPress={() => setAdding(true)} />
       </Row>
+      {series.data?.length ? (
+        <Card>
+          <H2>Repeating schedules</H2>
+          {series.data.map((x) => (
+            <Row key={x.id} between>
+              <P small>{`${x.dog}: ${weekdayNames(x.weekdays)}, ${x.plan} day, until ${dateKeyLabel(x.untilDate)}`}</P>
+              <Button
+                small
+                variant="ghost"
+                title="Stop"
+                onPress={async () => {
+                  if (!(await confirm(`Stop ${x.dog}'s schedule?`, 'Days from tomorrow on are cancelled. Fees follow your cancellation rules.'))) return;
+                  if (await attempt(() => api.post(`/booking-series/${x.id}/stop`, { from: todayKey(tz, 1) }))) {
+                    void series.reload();
+                    void list.reload();
+                  }
+                }}
+              />
+            </Row>
+          ))}
+        </Card>
+      ) : null}
       {rows.length === 0 ? <Empty text="Nothing booked here yet." /> : null}
       {[...byDay.entries()].map(([day, items]) => (
         <View key={day} style={{ gap: 8 }}>
@@ -83,6 +106,7 @@ export default function BookingsScreen() {
         onDone={() => {
           setAdding(false);
           void list.reload();
+          void series.reload();
         }}
       />
     </Screen>
@@ -100,6 +124,9 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
   const [play, setPlay] = useState(false);
   const [pickup, setPickup] = useState<string | null>('17:00');
   const [extras, setExtras] = useState<AddOnRequest[]>([]);
+  const [repeat, setRepeat] = useState(false);
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [until, setUntil] = useState(todayKey(tz, 56));
   const menu = useLoad(() => api.get<{ addOns: AddOn[] }>('/settings').then((s) => s.addOns), []);
   type Avail = { freeKennels?: { id: string; name: string; type: string; estimateCents: number }[]; spotsLeft?: number; capacity?: number };
   const avail = useLoad<Avail>(
@@ -113,6 +140,21 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
 
   async function save() {
     if (!dog) return;
+    if (service === 'daycare' && repeat) {
+      const r = await attempt(() =>
+        api.post<{ booked: number; waitlisted: number; skipped: { date: string }[] }>('/booking-series', { dogId: dog.id, weekdays, plan, pickupTime: pickup, from: date, until }),
+      );
+      if (!r) return;
+      say(
+        `${r.booked} days booked`,
+        [r.waitlisted ? `${r.waitlisted} on the waitlist (full).` : '', r.skipped.length ? `Skipped, already booked: ${r.skipped.map((x) => dateKeyLabel(x.date)).join(', ')}.` : ''].filter(Boolean).join(' '),
+      );
+      setRepeat(false);
+      setWeekdays([]);
+      if (!presetDog) setDog(null);
+      onDone();
+      return;
+    }
     const body =
       service === 'daycare' ? { dogId: dog.id, service, plan, date, pickupTime: pickup } : { dogId: dog.id, service, arrive, depart, kennelId, play };
     const chosen = normalizeAddOns(extras).filter((x) => menu.data?.find((a) => a.id === x.addOnId)?.services.includes(service));
@@ -137,7 +179,14 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
           <Pick label="Service" value={service} onChange={setService} options={[{ value: 'daycare', label: 'Daycare' }, { value: 'boarding', label: 'Boarding' }]} />
           {service === 'daycare' ? (
             <>
-              <Field label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} />
+              <Field label={repeat ? 'Starting (YYYY-MM-DD)' : 'Date (YYYY-MM-DD)'} value={date} onChangeText={setDate} />
+              <Toggle label="Repeat every week" value={repeat} onChange={setRepeat} />
+              {repeat ? (
+                <>
+                  <WeekdayPicker value={weekdays} onChange={setWeekdays} />
+                  <Field label="Until (YYYY-MM-DD, up to 6 months)" value={until} onChangeText={setUntil} />
+                </>
+              ) : null}
               <Pick label="Plan" value={plan} onChange={setPlan} options={[{ value: 'half', label: 'Half day' }, { value: 'full', label: 'Full day' }, { value: 'hourly', label: 'Hourly' }]} />
               <Pick label="Pickup around" value={pickup} onChange={setPickup} options={['12:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map((h) => ({ value: h, label: h }))} />
               {d?.spotsLeft !== undefined ? (
@@ -166,7 +215,7 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
               <AddOnPicker options={menu.data} service={service} value={extras} onChange={setExtras} defaultAddress={dog.owner.address ?? null} />
             </>
           ) : null}
-          <Button variant="primary" title="Book it" disabled={!dog.canEnter || (service === 'boarding' && !kennelId)} onPress={save} />
+          <Button variant="primary" title={service === 'daycare' && repeat ? 'Book every week' : 'Book it'} disabled={!dog.canEnter || (service === 'boarding' && !kennelId) || (service === 'daycare' && repeat && !weekdays.length)} onPress={save} />
         </>
       )}
     </Sheet>

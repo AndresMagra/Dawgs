@@ -139,8 +139,9 @@ export function Toggle({ label, value, onChange }: { label: string; value: boole
   const t = useTheme();
   return (
     <Row between>
-      <P>{label}</P>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: t.brand, false: t.border }} />
+      {/* The label toggles too: a small switch is hard to hit on a phone. */}
+      <P onPress={() => onChange(!value)}>{label}</P>
+      <Switch value={value} onValueChange={onChange} trackColor={{ true: t.brand, false: t.border }} accessibilityLabel={label} />
     </Row>
   );
 }

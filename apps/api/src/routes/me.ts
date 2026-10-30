@@ -43,6 +43,7 @@ import { availabilityShape, bookingShape } from './operations.js';
 import { dogShape, ownerShape, resolveNewCard, vaccineShape } from './people.js';
 import { signWaiver } from './manage.js';
 import { audit } from '../audit.js';
+import { createSeries, listSeries, seriesShape, stopSeries } from '../recurring.js';
 import { addOnRequestShape, addOnsForBookings, addToBooking, cancelBookingAddOn } from '../addons.js';
 
 export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -281,6 +282,22 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
     const input = parse(bookingShape, req.body);
     await myDog(a.ownerId, input.dogId);
     return createBooking(ctx, { businessId: a.businessId, input, source: 'owner', actor: `${a.name} (app)` });
+  });
+
+  app.get('/me/booking-series', async (req) => {
+    const a = requireOwner(req);
+    return listSeries(ctx, a.businessId, await myDogIds(a.ownerId));
+  });
+  app.post('/me/booking-series', async (req) => {
+    const a = requireOwner(req);
+    const input = parse(seriesShape, req.body);
+    await myDog(a.ownerId, input.dogId);
+    return createSeries(ctx, { businessId: a.businessId, input, source: 'owner', actor: `${a.name} (app)` });
+  });
+  app.post('/me/booking-series/:id/stop', async (req) => {
+    const a = requireOwner(req);
+    const { from } = parse(z.object({ from: dateKey }), req.body);
+    return stopSeries(ctx, { businessId: a.businessId, seriesId: (req.params as { id: string }).id, from, actor: `${a.name} (app)`, ownerId: a.ownerId });
   });
 
   app.post('/me/bookings/:id/cancel', async (req) => {

@@ -87,6 +87,10 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   `computeBill`: discounts, then tax, then tip. Check-out discounts are
   manager-only and need a reason; fees only on confirmed bookings, as an open
   `other` invoice, and a manager can waive them.
+- **Weekly schedules:** `recurring.ts`. A `booking_series` row keeps the rule
+  (weekdays, until, at most 6 months; owners capped at the online-booking
+  window); each day is an ordinary booking with `series_id`. Days already
+  booked or full are skipped; stopping cancels from a date with normal fees.
 - **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.

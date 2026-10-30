@@ -277,10 +277,30 @@ export const bookings = pgTable(
     source: text('source').$type<'staff' | 'owner'>().notNull(),
     notes: text('notes'),
     estimateCents: integer('estimate_cents'),
+    /** Set when the booking came from a repeating weekly schedule. */
+    seriesId: uuid('series_id'),
     createdAt: created(),
   },
-  (t) => [index('bookings_date').on(t.businessId, t.date), index('bookings_stay').on(t.businessId, t.arrive)],
+  (t) => [index('bookings_date').on(t.businessId, t.date), index('bookings_stay').on(t.businessId, t.arrive), index('bookings_series').on(t.seriesId)],
 );
+
+/** A repeating weekly daycare schedule; each day it covers is its own booking. */
+export const bookingSeries = pgTable('booking_series', {
+  id: id(),
+  businessId: biz(),
+  dogId: uuid('dog_id')
+    .notNull()
+    .references(() => dogs.id),
+  weekdays: jsonb('weekdays').$type<number[]>().notNull(),
+  plan: text('plan').$type<'half' | 'full' | 'hourly'>().notNull(),
+  pickupTime: text('pickup_time'),
+  fromDate: date('from_date').notNull(),
+  untilDate: date('until_date').notNull(),
+  /** The first day no longer booked after the schedule was stopped. */
+  stoppedFrom: date('stopped_from'),
+  createdBy: text('created_by').notNull(),
+  createdAt: created(),
+});
 
 /** A dog physically in the building, from check-in to check-out. */
 export const visits = pgTable(
@@ -939,6 +959,7 @@ export const schema = {
   yards,
   kennels,
   bookings,
+  bookingSeries,
   visits,
   visitNotes,
   careTasks,

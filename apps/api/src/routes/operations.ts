@@ -25,6 +25,7 @@ import {
 } from '../ops.js';
 import { dogSummaries } from '../people.js';
 import { notifyPickup } from '../authorized.js';
+import { createSeries, listSeries, seriesShape, stopSeries } from '../recurring.js';
 import { addOnRequestShape, addOnsForBookings, addToBooking, cancelBookingAddOn, runSheet, setAddOnStatus } from '../addons.js';
 
 export const bookingShape = z.discriminatedUnion('service', [
@@ -86,6 +87,18 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     const { status, waiveFee } = parse(z.object({ status: z.enum(['confirmed', 'declined', 'cancelled', 'no_show']), waiveFee: z.boolean().optional() }), req.body);
     if (waiveFee) requireManager(req);
     return setBookingStatus(ctx, { businessId: a.businessId, bookingId: id, status, actor: a.name, ...(waiveFee ? { waiveFee } : {}) });
+  });
+
+  app.get('/booking-series', async (req) => listSeries(ctx, requireStaff(req).businessId));
+  app.post('/booking-series', async (req) => {
+    const a = requireStaff(req);
+    return createSeries(ctx, { businessId: a.businessId, input: parse(seriesShape, req.body), source: 'staff', actor: a.name });
+  });
+  app.post('/booking-series/:id/stop', async (req) => {
+    const a = requireStaff(req);
+    const b = parse(z.object({ from: dateKey, waiveFee: z.boolean().optional() }), req.body);
+    if (b.waiveFee) requireManager(req);
+    return stopSeries(ctx, { businessId: a.businessId, seriesId: (req.params as { id: string }).id, from: b.from, actor: a.name, ...(b.waiveFee ? { waiveFee: true } : {}) });
   });
 
   app.post('/bookings/:id/add-ons', async (req) => {
