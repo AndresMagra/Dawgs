@@ -6,7 +6,7 @@
 
 import { and, eq, isNull } from 'drizzle-orm';
 import { addLocalDays, localDateKey } from '@dawgs/core';
-import { bookings, dogs, kennels, users, visits, walkTypes, yards } from '@dawgs/db';
+import { bookings, dogs, kennels, leads, users, visits, walkTypes, yards } from '@dawgs/db';
 import { buildApp } from './app.js';
 import { contextFromEnv } from './server.js';
 import { startScheduler } from './scheduler.js';
@@ -14,6 +14,7 @@ import { seedDemo, DEMO_PASSWORD } from './seed.js';
 import { checkIn, createBooking, loadBusiness } from './ops.js';
 import { scheduleWalk } from './walks.js';
 import type { AppContext } from './context.js';
+import { createLead, updateLead } from './leads.js';
 
 const env = process.env;
 if (env.STRIPE_SECRET_KEY) {
@@ -44,9 +45,24 @@ async function demoDay(ctx: AppContext, businessId: string) {
   if (wt) await safe(() => scheduleWalk(ctx, { businessId, dogId: byName('Mochi').id, walkTypeId: wt.id, scheduledAt: ctx.now() + 2 * 3_600_000, walkerId: walker?.id ?? null, actor, byOwner: false }));
 }
 
+/** A few prospective clients so the Leads screen isn't empty. Once. */
+async function demoLeads(ctx: AppContext, businessId: string) {
+  const [any] = await ctx.db.select({ id: leads.id }).from(leads).where(eq(leads.businessId, businessId)).limit(1);
+  if (any) return;
+  const b = await loadBusiness(ctx.db, businessId);
+  const today = localDateKey(ctx.now(), b.timezone);
+  const actor = 'Demo';
+  await createLead(ctx, { businessId, actor, source: 'website', input: { name: 'Casey Lin', email: 'casey@example.com', phone: '(555) 410-2231', dogName: 'Pepper', dogBreed: 'Beagle', interest: ['daycare'], message: 'Do you have Friday spots for a 2-year-old beagle?' } });
+  const tour = await createLead(ctx, { businessId, actor, source: 'referral', input: { name: 'Morgan Ruiz', phone: '(555) 410-8820', dogName: 'Tank', dogBreed: 'Boxer', interest: ['boarding', 'daycare'], message: 'Referred by Dana. Away for Thanksgiving.', followUpOn: today } });
+  await updateLead(ctx, { businessId, leadId: tour.id, input: { stage: 'tour' }, actor });
+  const trial = await createLead(ctx, { businessId, actor, source: 'social', input: { name: 'Taylor Brooks', email: 'taylor@example.com', dogName: 'Luna', dogBreed: 'Husky', interest: ['training'], followUpOn: addLocalDays(today, 3) } });
+  await updateLead(ctx, { businessId, leadId: trial.id, input: { stage: 'trial' }, actor });
+}
+
 const ctx = await contextFromEnv(env);
 const demo = await seedDemo(ctx.db, ctx.now());
 await demoDay(ctx, demo.id);
+await demoLeads(ctx, demo.id);
 setInterval(() => void demoDay(ctx, demo.id).catch(() => undefined), 3_600_000).unref();
 
 const web = env.DAWGS_WEB_DIR;

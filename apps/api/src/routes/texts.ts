@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { businesses, owners, smsMessages } from '@dawgs/db';
+import { leadReply } from '../leads.js';
 import type { AppContext } from '../context.js';
 import { requireStaff, sameBusiness } from '../auth.js';
 import { parse } from '../util.js';
@@ -64,6 +65,7 @@ export function registerTextRoutes(app: FastifyInstance, ctx: AppContext) {
       status: 'received',
       providerId: p.MessageSid ?? null,
     });
+    if (!owner) await leadReply(ctx, biz.id, from, body);
     if (owner && /^(stop|stopall|unsubscribe|cancel|end|quit)$/i.test(body)) {
       await ctx.db.update(owners).set({ smsOptIn: false }).where(and(eq(owners.id, owner.id)));
     }

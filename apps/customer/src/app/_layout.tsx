@@ -9,8 +9,8 @@ function Gate() {
   const { ready, user, business } = useSession();
   const t = useTheme();
   const path = usePathname();
-  // A pay link from a text or email works without an account.
-  const isPublic = path.startsWith('/pay/');
+  // A pay link from a text or email, and the inquiry form on a daycare's website, work without an account.
+  const isPublic = path.startsWith('/pay/') || path.startsWith('/inquire/');
   if (!ready) return <Loading />;
   if (!user && !isPublic) return <Login />;
   return (

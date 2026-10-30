@@ -455,6 +455,55 @@ export const invoices = pgTable(
   (t) => [uniqueIndex('invoices_number').on(t.businessId, t.number)],
 );
 
+/**
+ * Prospective customers: an inquiry from the website form, a phone call, a
+ * walk-in. Worked through stages until they become an owner (won) or not (lost).
+ */
+export const leads = pgTable(
+  'leads',
+  {
+    id: id(),
+    businessId: biz(),
+    name: text('name').notNull(),
+    email: text('email'),
+    phone: text('phone'),
+    dogName: text('dog_name'),
+    dogBreed: text('dog_breed'),
+    source: text('source').$type<'website' | 'phone' | 'walk_in' | 'referral' | 'social' | 'other'>().notNull(),
+    interest: jsonb('interest').$type<string[]>().notNull().default([]),
+    stage: text('stage').$type<'new' | 'contacted' | 'tour' | 'trial' | 'won' | 'lost'>().notNull(),
+    message: text('message'),
+    lostReason: text('lost_reason'),
+    /** Local day of the next follow-up; the morning list and reminders read it. */
+    followUpOn: date('follow_up_on'),
+    /** Local day the follow-up push last went out, so it goes once a day. */
+    remindedOn: date('reminded_on'),
+    assignedTo: uuid('assigned_to').references(() => users.id),
+    /** The owner record this lead became. */
+    ownerId: uuid('owner_id').references(() => owners.id),
+    createdAt: created(),
+    updatedAt: ts('updated_at'),
+  },
+  (t) => [index('leads_business_stage').on(t.businessId, t.stage)],
+);
+
+/** Everything that happened with a lead: notes, calls, texts, emails, stage moves. */
+export const leadActivities = pgTable(
+  'lead_activities',
+  {
+    id: id(),
+    businessId: biz(),
+    leadId: uuid('lead_id')
+      .notNull()
+      .references(() => leads.id),
+    kind: text('kind').$type<'note' | 'call' | 'text' | 'email' | 'stage' | 'tour'>().notNull(),
+    body: text('body').notNull(),
+    by: text('by').notNull(),
+    at: created(),
+  },
+  (t) => [index('lead_activities_lead').on(t.leadId)],
+);
+
 /** Each time an invoice went out, by email or text, and whether it got there. */
 export const invoiceSends = pgTable(
   'invoice_sends',
@@ -593,7 +642,7 @@ export const smsMessages = pgTable('sms_messages', {
   direction: text('direction').$type<'out' | 'in'>().notNull(),
   to: text('to').notNull(),
   body: text('body').notNull(),
-  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'inbound'>().notNull(),
+  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'lead' | 'inbound'>().notNull(),
   status: text('status').$type<'queued' | 'sent' | 'failed' | 'received' | 'skipped'>().notNull(),
   providerId: text('provider_id'),
   error: text('error'),
@@ -852,6 +901,8 @@ export const schema = {
   payments,
   paymentLinks,
   invoiceSends,
+  leads,
+  leadActivities,
   walkTypes,
   walks,
   walkPoints,

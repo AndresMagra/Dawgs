@@ -416,3 +416,33 @@ export interface SmsMessage {
   createdAt: string;
   ownerName?: string | null;
 }
+
+export type LeadStage = 'new' | 'contacted' | 'tour' | 'trial' | 'won' | 'lost';
+export type LeadSource = 'website' | 'phone' | 'walk_in' | 'referral' | 'social' | 'other';
+
+export interface Lead {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  dogName: string | null;
+  dogBreed: string | null;
+  source: LeadSource;
+  interest: string[];
+  stage: LeadStage;
+  message: string | null;
+  lostReason: string | null;
+  followUpOn: string | null;
+  assignedTo: string | null;
+  ownerId: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface LeadActivity {
+  id: string;
+  kind: 'note' | 'call' | 'text' | 'email' | 'stage' | 'tour';
+  body: string;
+  by: string;
+  at: string;
+}

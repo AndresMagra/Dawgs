@@ -9,13 +9,15 @@ import { runPickupTexts } from './texts.js';
 import { runMemberships } from './sales.js';
 import { purgeExpiredSessions } from './auth.js';
 import { runInvoiceReminders } from './invoicing.js';
+import { runLeadFollowUps } from './leads.js';
 
 export async function tick(ctx: AppContext) {
   const pickupTexts = await runPickupTexts(ctx);
   const memberships = await runMemberships(ctx);
   const invoiceReminders = await runInvoiceReminders(ctx);
+  const leadFollowUps = await runLeadFollowUps(ctx);
   await purgeExpiredSessions(ctx);
-  return { pickupTexts, memberships, invoiceReminders };
+  return { pickupTexts, memberships, invoiceReminders, leadFollowUps };
 }
 
 export function startScheduler(ctx: AppContext, everyMs = 60_000) {

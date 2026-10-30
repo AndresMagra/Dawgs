@@ -70,6 +70,11 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   every attempt is an `invoice_sends` row. Reminders at 1/7/14 days overdue,
   claimed by bumping `reminders_sent`. Without RESEND_API_KEY + DAWGS_MAIL_FROM,
   `ConsoleMail` logs.
+- **Leads:** `leads.ts`. Prospects from the public form (`/inquire/<slug>` in the
+  customer site, honeypot + per-IP limit) or added by staff; every call, text,
+  email and stage change is a `lead_activities` row. `won` only via convert
+  (creates the owner and dog). Texts to leads honour STOP by reading inbound
+  `sms_messages`; replies from a lead's number land on its timeline.
 - **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.

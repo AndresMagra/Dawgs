@@ -65,3 +65,21 @@ export function invoiceStage(i: { status: string; sentAt: string | null; viewedA
   if (i.sentAt) return { text: 'Sent', tone: 'warn' as const };
   return { text: 'Not sent', tone: 'warn' as const };
 }
+
+export const LEAD_STAGES = [
+  { key: 'new', label: 'New' },
+  { key: 'contacted', label: 'Contacted' },
+  { key: 'tour', label: 'Tour booked' },
+  { key: 'trial', label: 'Trial day' },
+  { key: 'won', label: 'Won' },
+  { key: 'lost', label: 'Lost' },
+] as const;
+
+export const LEAD_SOURCES = [
+  { key: 'website', label: 'Website' },
+  { key: 'phone', label: 'Phone call' },
+  { key: 'walk_in', label: 'Walk-in' },
+  { key: 'referral', label: 'Referral' },
+  { key: 'social', label: 'Social media' },
+  { key: 'other', label: 'Other' },
+] as const;
