@@ -1,5 +1,5 @@
 {
-  "id": "a0c1cba0-e5c1-4c87-b607-a4d12e1e1277",
+  "id": "71844c02-3215-466f-8d56-08f28cd6ff91",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3636,6 +3636,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4745,6 +4751,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "author": {
           "name": "author",
           "type": "text",
@@ -4757,6 +4769,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

@@ -75,6 +75,15 @@ function DogDetail({ id }: { id: string }) {
                   {day(r.createdAt, tz)} · {r.author}
                 </P>
               </Row>
+              {r.details ? (
+                <Row wrap>
+                  {r.details.mood ? <Chip text={({ great: 'Great day', good: 'Good day', shy: 'A bit shy', tired: 'Tired out' } as Record<string, string>)[r.details.mood] ?? r.details.mood} tone="ok" /> : null}
+                  {r.details.ate ? <Chip text={({ all: 'Ate it all', some: 'Ate some', none: "Didn't eat" } as Record<string, string>)[r.details.ate] ?? r.details.ate} /> : null}
+                  {r.details.energy ? <Chip text={`${r.details.energy} energy`} /> : null}
+                  {r.details.potty ? <Chip text={`Potty: ${r.details.potty}`} /> : null}
+                </Row>
+              ) : null}
+              {r.details?.playmates?.length ? <P small muted>{`Played with ${r.details.playmates.join(', ')}`}</P> : null}
               <P>{r.body}</P>
               {r.photoUrl ? <Image source={{ uri: r.photoUrl }} style={{ width: '100%', height: 220, borderRadius: 10 }} resizeMode="cover" /> : null}
             </Card>

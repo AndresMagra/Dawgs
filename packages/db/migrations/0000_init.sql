@@ -430,6 +430,7 @@ CREATE TABLE "sms_messages" (
 	"provider_id" text,
 	"error" text,
 	"sent_by" text,
+	"read_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -554,8 +555,10 @@ CREATE TABLE "visit_notes" (
 	"kind" text NOT NULL,
 	"body" text NOT NULL,
 	"photo_url" text,
+	"details" jsonb,
 	"author" text NOT NULL,
 	"shared_with_owner" boolean DEFAULT false NOT NULL,
+	"sent_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

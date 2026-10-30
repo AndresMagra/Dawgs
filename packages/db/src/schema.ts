@@ -332,6 +332,14 @@ export const visits = pgTable(
 );
 
 /** Report-card notes and incidents. `sharedWithOwner` puts it in the customer app. */
+export interface ReportDetails {
+  mood?: 'great' | 'good' | 'shy' | 'tired';
+  ate?: 'all' | 'some' | 'none';
+  potty?: 'normal' | 'soft' | 'none';
+  energy?: 'high' | 'medium' | 'low';
+  playmates?: string[];
+}
+
 export const visitNotes = pgTable('visit_notes', {
   id: id(),
   businessId: biz(),
@@ -342,8 +350,12 @@ export const visitNotes = pgTable('visit_notes', {
   kind: text('kind').$type<'report' | 'incident' | 'note'>().notNull(),
   body: text('body').notNull(),
   photoUrl: text('photo_url'),
+  /** A report card's quick answers: mood, appetite, potty, energy, playmates. */
+  details: jsonb('details').$type<ReportDetails | null>(),
   author: text('author').notNull(),
   sharedWithOwner: boolean('shared_with_owner').notNull().default(false),
+  /** When the owner was told about it (push, and a text if the daycare wants). */
+  sentAt: ts('sent_at'),
   createdAt: created(),
 });
 
@@ -712,11 +724,13 @@ export const smsMessages = pgTable('sms_messages', {
   direction: text('direction').$type<'out' | 'in'>().notNull(),
   to: text('to').notNull(),
   body: text('body').notNull(),
-  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'lead' | 'inbound'>().notNull(),
+  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'lead' | 'inbound' | 'review' | 'birthday' | 'report_card'>().notNull(),
   status: text('status').$type<'queued' | 'sent' | 'failed' | 'received' | 'skipped'>().notNull(),
   providerId: text('provider_id'),
   error: text('error'),
   sentBy: text('sent_by'),
+  /** Inbound only: when someone at the desk opened the conversation. */
+  readAt: ts('read_at'),
   createdAt: created(),
 });
 

@@ -24,6 +24,11 @@ export interface Policies {
   lateCancelFeeCents: Cents;
   noShowFeeCents: Cents;
   onlineBooking: { enabled: boolean; autoApprove: boolean; daysAhead: number };
+  /** After a pickup, text a link to the daycare's review page, at most once per `everyDays` per client. */
+  reviewRequests: { enabled: boolean; url: string; everyDays: number };
+  birthdayTexts: boolean;
+  /** Also text the owner when a report card is sent (it always appears in their app). */
+  reportCardTexts: boolean;
 }
 
 export const DEFAULT_POLICIES: Policies = {
@@ -37,11 +42,19 @@ export const DEFAULT_POLICIES: Policies = {
   lateCancelFeeCents: 0,
   noShowFeeCents: 0,
   onlineBooking: { enabled: true, autoApprove: false, daysAhead: 90 },
+  reviewRequests: { enabled: false, url: '', everyDays: 90 },
+  birthdayTexts: false,
+  reportCardTexts: false,
 };
 
 /** Older rows and partial edits are filled from the defaults, so every rule always has a value. */
 export function withPolicyDefaults(p: Partial<Policies> | null | undefined): Policies {
-  return { ...DEFAULT_POLICIES, ...(p ?? {}), onlineBooking: { ...DEFAULT_POLICIES.onlineBooking, ...(p?.onlineBooking ?? {}) } };
+  return {
+    ...DEFAULT_POLICIES,
+    ...(p ?? {}),
+    onlineBooking: { ...DEFAULT_POLICIES.onlineBooking, ...(p?.onlineBooking ?? {}) },
+    reviewRequests: { ...DEFAULT_POLICIES.reviewRequests, ...(p?.reviewRequests ?? {}) },
+  };
 }
 
 export interface Extras {

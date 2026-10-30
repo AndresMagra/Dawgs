@@ -404,6 +404,7 @@ export interface ReportCard {
   kind: 'report' | 'incident' | 'note';
   body: string;
   photoUrl: string | null;
+  details?: { mood?: string; ate?: string; potty?: string; energy?: string; playmates?: string[] } | null;
   author: string;
   createdAt: string;
 }
@@ -507,4 +508,7 @@ export interface Policies {
   lateCancelFeeCents: number;
   noShowFeeCents: number;
   onlineBooking: { enabled: boolean; autoApprove: boolean; daysAhead: number };
+  reviewRequests: { enabled: boolean; url: string; everyDays: number };
+  birthdayTexts: boolean;
+  reportCardTexts: boolean;
 }

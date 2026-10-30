@@ -26,6 +26,7 @@ import { dogSummaries, lastVisits, ownerCards } from '../people.js';
 import { ensureStripeCustomer, removeCard, saveCard, setDefaultCard } from '../payments.js';
 import { grantCredits, spendCredits, walletOf } from '../credits.js';
 import { audit } from '../audit.js';
+import { sendReportCards } from '../messaging.js';
 
 export const ownerShape = z.object({
   name: z.string().min(1),
@@ -275,6 +276,18 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
         photoUrl: z.string().nullable().optional(),
         visitId: uuid.nullable().optional(),
         sharedWithOwner: z.boolean().optional(),
+        details: z
+          .object({
+            mood: z.enum(['great', 'good', 'shy', 'tired']).optional(),
+            ate: z.enum(['all', 'some', 'none']).optional(),
+            potty: z.enum(['normal', 'soft', 'none']).optional(),
+            energy: z.enum(['high', 'medium', 'low']).optional(),
+            playmates: z.array(z.string().max(40)).max(10).optional(),
+          })
+          .nullable()
+          .optional(),
+        /** A report card saved to send later with the rest of the day's. */
+        draft: z.boolean().optional(),
       }),
       req.body,
     );
@@ -289,11 +302,14 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
         body: b.body,
         photoUrl: b.photoUrl ?? null,
         visitId: b.visitId ?? null,
+        details: b.details ?? null,
         author: a.name,
-        // Report cards go to the owner by default; incidents and notes don't.
-        sharedWithOwner: b.sharedWithOwner ?? b.kind === 'report',
+        createdAt: new Date(ctx.now()),
+        // Report cards go to the owner by default; incidents and notes don't. A draft waits for the bulk send.
+        sharedWithOwner: b.draft ? false : (b.sharedWithOwner ?? b.kind === 'report'),
       })
       .returning();
+    if (b.kind === 'report' && !b.draft && n!.sharedWithOwner) await sendReportCards(ctx, { businessId: a.businessId, ids: [n!.id], actor: a.name });
     if (b.kind === 'incident') await audit(ctx.db, a.businessId, a.name, 'incident', `${d!.name}: ${b.body}`);
     return n;
   });

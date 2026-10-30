@@ -5,7 +5,9 @@
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { businesses, owners, smsMessages } from '@dawgs/db';
+import { businesses, owners, smsMessages, users } from '@dawgs/db';
+import { ValidationError } from '@dawgs/core';
+import { inbox, notifyInbound, reply, thread, unreadCount } from '../messaging.js';
 import { leadReply } from '../leads.js';
 import type { AppContext } from '../context.js';
 import { requireStaff, sameBusiness } from '../auth.js';
@@ -24,6 +26,20 @@ export function registerTextRoutes(app: FastifyInstance, ctx: AppContext) {
       .orderBy(desc(smsMessages.createdAt))
       .limit(300);
     return rows.map((r) => ({ ...r.m, ownerName: r.owner }));
+  });
+
+  app.get('/texts/inbox', async (req) => inbox(ctx, requireStaff(req).businessId));
+  app.get('/texts/unread', async (req) => ({ unread: await unreadCount(ctx, requireStaff(req).businessId) }));
+  app.get('/texts/thread', async (req) => {
+    const a = requireStaff(req);
+    const q = parse(z.object({ ownerId: z.string().uuid().optional(), phone: z.string().max(20).optional() }), req.query);
+    if (!q.ownerId && !q.phone) throw new ValidationError('ownerId or phone');
+    return thread(ctx, a.businessId, { ...(q.ownerId ? { ownerId: q.ownerId } : {}), ...(q.phone ? { phone: q.phone } : {}) });
+  });
+  app.post('/texts/reply', async (req) => {
+    const a = requireStaff(req);
+    const b = parse(z.object({ ownerId: z.string().uuid().optional(), phone: z.string().max(20).optional(), body: z.string().min(1).max(600) }), req.body);
+    return reply(ctx, { businessId: a.businessId, body: b.body, actor: a.name, ...(b.ownerId ? { ownerId: b.ownerId } : {}), ...(b.phone ? { phone: b.phone } : {}) });
   });
 
   app.post('/owners/:id/text', async (req) => {
@@ -66,6 +82,10 @@ export function registerTextRoutes(app: FastifyInstance, ctx: AppContext) {
       providerId: p.MessageSid ?? null,
     });
     if (!owner) await leadReply(ctx, biz.id, from, body);
+    else if (!/^(stop|stopall|unsubscribe|cancel|end|quit|start|unstop|yes)$/i.test(body)) {
+      const managers = await ctx.db.select({ id: users.id }).from(users).where(and(eq(users.businessId, biz.id), eq(users.role, 'manager'), eq(users.active, true)));
+      await notifyInbound(ctx, biz.id, owner.name, body, managers.map((m) => m.id));
+    }
     if (owner && /^(stop|stopall|unsubscribe|cancel|end|quit)$/i.test(body)) {
       await ctx.db.update(owners).set({ smsOptIn: false }).where(and(eq(owners.id, owner.id)));
     }

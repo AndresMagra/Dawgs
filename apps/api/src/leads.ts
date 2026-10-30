@@ -104,7 +104,7 @@ export async function addActivity(ctx: AppContext, args: { businessId: string; l
 }
 
 /** Has this number texted STOP more recently than START? Carriers require honouring it, client or not. */
-async function optedOut(ctx: AppContext, businessId: string, e164: string) {
+export async function optedOut(ctx: AppContext, businessId: string, e164: string) {
   const inbound = await ctx.db
     .select({ body: smsMessages.body })
     .from(smsMessages)

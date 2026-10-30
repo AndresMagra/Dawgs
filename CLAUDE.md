@@ -96,6 +96,13 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   prepaid liability values unused credits at what was paid for them (gifts
   $0). CSV exports defuse formula cells and are written to the activity log.
   Payments are stamped by the database clock, so tests use wide ranges.
+- **Messaging:** `messaging.ts`. The inbox groups `sms_messages` by client
+  (or by number for leads and strangers); unread is inbound with `read_at`
+  null. Replying to a non-client number is allowed only if it texted first.
+  Report cards can be drafts (`details` for mood/lunch/potty/energy/playmates)
+  sent in bulk; `sent_at` is claimed so an owner is told once. Review requests
+  after check-out (at most every N days) and birthday texts are derived from
+  the text log, never a stored flag.
 - **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.

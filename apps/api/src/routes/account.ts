@@ -206,6 +206,11 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
             lateCancelFeeCents: cents,
             noShowFeeCents: cents,
             onlineBooking: z.object({ enabled: z.boolean(), autoApprove: z.boolean(), daysAhead: z.number().int().min(1).max(365) }).partial(),
+            reviewRequests: z
+              .object({ enabled: z.boolean(), url: z.union([z.literal(''), z.string().url().startsWith('https://')]), everyDays: z.number().int().min(7).max(730) })
+              .partial(),
+            birthdayTexts: z.boolean(),
+            reportCardTexts: z.boolean(),
           })
           .partial()
           .optional(),
@@ -215,7 +220,13 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
     if (b.policies) {
       // Merge into what is stored so a screen that edits one rule can't wipe the others.
       const [cur] = await ctx.db.select({ p: businesses.policies }).from(businesses).where(eq(businesses.id, a.businessId));
-      const merged = withPolicyDefaults({ ...withPolicyDefaults(cur!.p), ...b.policies, onlineBooking: { ...withPolicyDefaults(cur!.p).onlineBooking, ...(b.policies.onlineBooking ?? {}) } });
+      const was = withPolicyDefaults(cur!.p);
+      const merged = withPolicyDefaults({
+        ...was,
+        ...b.policies,
+        onlineBooking: { ...was.onlineBooking, ...(b.policies.onlineBooking ?? {}) },
+        reviewRequests: { ...was.reviewRequests, ...(b.policies.reviewRequests ?? {}) },
+      });
       (b as { policies: unknown }).policies = merged;
     }
     if (b.timezone) {

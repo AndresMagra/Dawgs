@@ -12,7 +12,8 @@ const ITEMS: { href: string; title: string; text: string; manager?: boolean }[] 
   { href: '/chat', title: 'Team chat', text: 'The whole team and direct messages' },
   { href: '/team', title: 'Team', text: 'Clock in, schedule, time off, payroll' },
   { href: '/waivers', title: 'Waivers & forms', text: 'What owners sign, and who signed' },
-  { href: '/texts', title: 'Texts', text: 'Every text sent and received' },
+  { href: '/texts', title: 'Texts', text: 'Conversations with clients, and every text sent' },
+  { href: '/report-cards', title: 'Report cards', text: "Write today's, then send them all at once" },
   { href: '/money', title: 'Money', text: 'Income, expenses, budgets, retail stock', manager: true },
   { href: '/reports', title: 'Reports', text: 'Revenue, occupancy, top clients, exports', manager: true },
   { href: '/settings', title: 'Settings', text: 'Prices, hours, yards, Stripe, Twilio', manager: true },
@@ -23,6 +24,7 @@ export default function MoreScreen() {
   const { user, business, isManager, signOut } = useSession();
   const chat = useLoad(() => api.get<ChatChannel[]>('/chat'), [], 30_000);
   const unread = (chat.data ?? []).reduce((s, c) => s + c.unread, 0);
+  const texts = useLoad(() => api.get<{ unread: number }>('/texts/unread'), [], 30_000);
   return (
     <Screen>
       <Card>
@@ -40,6 +42,7 @@ export default function MoreScreen() {
             <Row between>
               <H2>{i.title}</H2>
               {i.href === '/chat' && unread ? <Chip text={String(unread)} tone="bad" /> : null}
+              {i.href === '/texts' && texts.data?.unread ? <Chip text={String(texts.data.unread)} tone="bad" /> : null}
             </Row>
             <P small muted>{i.text}</P>
           </Card>

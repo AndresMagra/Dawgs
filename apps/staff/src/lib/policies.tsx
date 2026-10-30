@@ -71,6 +71,30 @@ export function PoliciesForm({ value, onSave }: { value: Policies; onSave: (p: P
           keyboardType="number-pad"
         />
       </Card>
+      <Card>
+        <H2>Friendly texts</H2>
+        <Toggle label="Ask for a review after pickup" value={p.reviewRequests.enabled} onChange={(v) => setP((x) => ({ ...x, reviewRequests: { ...x.reviewRequests, enabled: v } }))} />
+        {p.reviewRequests.enabled ? (
+          <>
+            <Field
+              label="Your review page (Google, Yelp…)"
+              value={p.reviewRequests.url}
+              onChangeText={(v) => setP((x) => ({ ...x, reviewRequests: { ...x.reviewRequests, url: v.trim() } }))}
+              autoCapitalize="none"
+              placeholder="https://g.page/r/…/review"
+            />
+            <Field
+              label="Ask the same client at most every (days)"
+              value={String(p.reviewRequests.everyDays)}
+              onChangeText={(v) => setP((x) => ({ ...x, reviewRequests: { ...x.reviewRequests, everyDays: Math.max(7, Math.round(Number(v) || 90)) } }))}
+              keyboardType="number-pad"
+            />
+          </>
+        ) : null}
+        <Toggle label="Text happy birthday on each dog's birthday" value={p.birthdayTexts} onChange={(v) => set('birthdayTexts', v)} />
+        <Toggle label="Also text owners when a report card is sent" value={p.reportCardTexts} onChange={(v) => set('reportCardTexts', v)} />
+        <P small muted>Clients who reply STOP never get these.</P>
+      </Card>
       <Row>
         <Button variant="primary" title="Save rules" onPress={save} />
         {toCents(late) || toCents(noShow) ? <P small muted>{`Clients see: late cancel ${money(toCents(late))}, no-show ${money(toCents(noShow))}`}</P> : null}

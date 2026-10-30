@@ -10,14 +10,16 @@ import { runMemberships } from './sales.js';
 import { purgeExpiredSessions } from './auth.js';
 import { runInvoiceReminders } from './invoicing.js';
 import { runLeadFollowUps } from './leads.js';
+import { runBirthdayTexts } from './messaging.js';
 
 export async function tick(ctx: AppContext) {
   const pickupTexts = await runPickupTexts(ctx);
   const memberships = await runMemberships(ctx);
   const invoiceReminders = await runInvoiceReminders(ctx);
   const leadFollowUps = await runLeadFollowUps(ctx);
+  const birthdays = await runBirthdayTexts(ctx);
   await purgeExpiredSessions(ctx);
-  return { pickupTexts, memberships, invoiceReminders, leadFollowUps };
+  return { pickupTexts, memberships, invoiceReminders, leadFollowUps, birthdays };
 }
 
 export function startScheduler(ctx: AppContext, everyMs = 60_000) {

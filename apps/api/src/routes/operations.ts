@@ -25,6 +25,7 @@ import {
 } from '../ops.js';
 import { dogSummaries } from '../people.js';
 import { notifyPickup } from '../authorized.js';
+import { maybeAskForReview, reportCards, sendReportCards } from '../messaging.js';
 import { createSeries, listSeries, seriesShape, stopSeries } from '../recurring.js';
 import { addOnRequestShape, addOnsForBookings, addToBooking, cancelBookingAddOn, runSheet, setAddOnStatus } from '../addons.js';
 
@@ -99,6 +100,17 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     const b = parse(z.object({ from: dateKey, waiveFee: z.boolean().optional() }), req.body);
     if (b.waiveFee) requireManager(req);
     return stopSeries(ctx, { businessId: a.businessId, seriesId: (req.params as { id: string }).id, from: b.from, actor: a.name, ...(b.waiveFee ? { waiveFee: true } : {}) });
+  });
+
+  app.get('/report-cards', async (req) => {
+    const a = requireStaff(req);
+    const { date } = parse(z.object({ date: dateKey.optional() }), req.query);
+    return reportCards(ctx, a.businessId, date);
+  });
+  app.post('/report-cards/send', async (req) => {
+    const a = requireStaff(req);
+    const { ids } = parse(z.object({ ids: z.array(uuid).min(1).max(200) }), req.body);
+    return sendReportCards(ctx, { businessId: a.businessId, ids, actor: a.name });
   });
 
   app.post('/bookings/:id/add-ons', async (req) => {
@@ -197,6 +209,8 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
       ...(b.pickedUpBy ? { pickedUpBy: b.pickedUpBy } : {}),
     });
     if (b.pickedUpBy) await notifyPickup(ctx, id, b.pickedUpBy);
+    // A thank-you and review link must never get in the way of the check-out itself.
+    await maybeAskForReview(ctx, a.businessId, out.invoice.ownerId).catch(() => undefined);
     return out;
   });
 
