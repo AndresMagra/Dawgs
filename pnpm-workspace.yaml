@@ -7,3 +7,4 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - stripe@23.1.0
+nodeLinker: hoisted
