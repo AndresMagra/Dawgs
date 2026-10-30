@@ -210,3 +210,45 @@ describe('payroll', () => {
     expect(weeklyPay(45, 2000)).toEqual({ regular: 40, overtime: 5, gross: 80000 + 15000 });
   });
 });
+
+import { finishBill, lateCancelFee, tipOptions, withPolicyDefaults } from './policies.js';
+
+describe('check-out policies', () => {
+  const bill = {
+    lines: [
+      { kind: 'service' as const, text: 'Full day', amount: 4000 },
+      { kind: 'addon' as const, text: 'Nail trim', amount: 1500 },
+    ],
+    total: 5500,
+    creditsUsed: {},
+  };
+  it('taxes add-ons only by default, after discounts, and adds the tip last', () => {
+    const p = withPolicyDefaults({ salesTaxBps: 800, multiDogPercent: 10 });
+    const out = finishBill(bill, p, { multiDog: true, tipCents: 500 });
+    // 10% off the $40 day; tax 8% on the add-on share of the discounted bill.
+    const off = 400;
+    const taxable = Math.round(1500 * (1 - off / 5500));
+    const tax = Math.round(taxable * 0.08);
+    expect(out.lines.map((l) => l.kind)).toEqual(['service', 'addon', 'discount', 'tax', 'tip']);
+    expect(out.total).toBe(5500 - off + tax + 500);
+  });
+  it('never discounts below zero and offers tips on the bill before tax', () => {
+    const p = withPolicyDefaults({});
+    const out = finishBill(bill, p, { discount: { cents: 99_999, reason: 'Comp' } });
+    expect(out.total).toBe(0);
+    expect(tipOptions(bill, p)).toEqual([
+      { percent: 15, cents: 825 },
+      { percent: 18, cents: 990 },
+      { percent: 20, cents: 1100 },
+    ]);
+    expect(finishBill(bill, withPolicyDefaults({ tipsEnabled: false }), { tipCents: 500 }).total).toBe(5500);
+  });
+  it('charges a late-cancel fee only inside the window', () => {
+    const p = withPolicyDefaults({ cancelWindowHours: 24, lateCancelFeeCents: 2000 });
+    const tz = 'America/New_York';
+    // Nov 10 starts 05:00 UTC in New York.
+    expect(lateCancelFee(p, '2026-11-10', tz, Date.parse('2026-11-09T04:00:00Z'))).toBe(0);
+    expect(lateCancelFee(p, '2026-11-10', tz, Date.parse('2026-11-09T06:00:00Z'))).toBe(2000);
+    expect(lateCancelFee(withPolicyDefaults({}), '2026-11-10', tz, Date.parse('2026-11-09T06:00:00Z'))).toBe(0);
+  });
+});

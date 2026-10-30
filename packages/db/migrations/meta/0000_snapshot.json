@@ -1,5 +1,5 @@
 {
-  "id": "23817104-6c1a-49b7-bd86-8ed4bcee8029",
+  "id": "1138075b-0822-41bf-8f4a-abfaac1f7d31",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -896,6 +896,13 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "policies": {
+          "name": "policies",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "daycare_capacity": {
           "name": "daycare_capacity",

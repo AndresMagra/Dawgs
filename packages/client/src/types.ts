@@ -38,6 +38,7 @@ export interface Business {
   prices: PriceList;
   hours: { closesAt: string; checkoutBy: string; halfDayLimitMinutes: number; hourlyMinimumMinutes: number };
   requiredVaccines: string[];
+  bookingPolicy?: Pick<Policies, 'cancelWindowHours' | 'lateCancelFeeCents' | 'noShowFeeCents' | 'onlineBooking'>;
 }
 
 export interface Flag {
@@ -120,6 +121,7 @@ export interface Booking {
   estimateCents: number | null;
   dog?: Dog;
   addOns?: BookingAddOn[];
+  cancelFeeCents?: number;
 }
 
 export interface Visit {
@@ -140,12 +142,13 @@ export interface Visit {
 export interface BillLine {
   text: string;
   amount: number;
-  kind: 'service' | 'credit' | 'fee' | 'addon';
+  kind: 'service' | 'credit' | 'fee' | 'addon' | 'discount' | 'tax' | 'tip';
 }
 
 export interface Bill {
   lines: BillLine[];
   total: number;
+  tipOptions?: { percent: number; cents: number }[];
 }
 
 export interface Invoice {
@@ -491,4 +494,17 @@ export interface AddOnRequest {
   time?: string | null;
   address?: string | null;
   notes?: string | null;
+}
+
+export interface Policies {
+  salesTaxBps: number;
+  taxServices: boolean;
+  taxAddOns: boolean;
+  tipsEnabled: boolean;
+  tipChoices: number[];
+  multiDogPercent: number;
+  cancelWindowHours: number;
+  lateCancelFeeCents: number;
+  noShowFeeCents: number;
+  onlineBooking: { enabled: boolean; autoApprove: boolean; daysAhead: number };
 }

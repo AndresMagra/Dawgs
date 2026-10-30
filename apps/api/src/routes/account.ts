@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { ValidationError } from '@dawgs/core';
 import { addOns, businesses, kennels, pushTokens, sessions, users, walkTypes, yards } from '@dawgs/db';
 import type { AppContext } from '../context.js';
+import { withPolicyDefaults } from '@dawgs/core';
 import { addOnSettingsShape, slugCode } from '../addons.js';
 import {
   auth,
@@ -59,6 +60,8 @@ export function publicBusiness(b: typeof businesses.$inferSelect) {
     brandColor: b.brandColor,
     prices: b.prices,
     hours: b.hours,
+    // What clients need to know before booking; tax and tip settings stay with the desk.
+    bookingPolicy: (({ cancelWindowHours, lateCancelFeeCents, noShowFeeCents, onlineBooking }) => ({ cancelWindowHours, lateCancelFeeCents, noShowFeeCents, onlineBooking }))(withPolicyDefaults(b.policies)),
     requiredVaccines: b.requiredVaccines,
   };
 }
@@ -158,6 +161,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
         inactiveAfterDays: b!.inactiveAfterDays,
         pickupTextsEnabled: b!.pickupTextsEnabled,
         invoiceRemindersEnabled: b!.invoiceRemindersEnabled,
+        policies: withPolicyDefaults(b!.policies),
         emailMode: ctx.mail.mode,
         plan: b!.plan,
         trialEndsAt: b!.trialEndsAt,
@@ -190,9 +194,30 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
         inactiveAfterDays: z.number().int().min(1).max(365).optional(),
         pickupTextsEnabled: z.boolean().optional(),
         invoiceRemindersEnabled: z.boolean().optional(),
+        policies: z
+          .object({
+            salesTaxBps: z.number().int().min(0).max(2500),
+            taxServices: z.boolean(),
+            taxAddOns: z.boolean(),
+            tipsEnabled: z.boolean(),
+            tipChoices: z.array(z.number().int().min(1).max(100)).max(5),
+            multiDogPercent: z.number().int().min(0).max(100),
+            cancelWindowHours: z.number().int().min(0).max(24 * 14),
+            lateCancelFeeCents: cents,
+            noShowFeeCents: cents,
+            onlineBooking: z.object({ enabled: z.boolean(), autoApprove: z.boolean(), daysAhead: z.number().int().min(1).max(365) }).partial(),
+          })
+          .partial()
+          .optional(),
       }),
       req.body,
     );
+    if (b.policies) {
+      // Merge into what is stored so a screen that edits one rule can't wipe the others.
+      const [cur] = await ctx.db.select({ p: businesses.policies }).from(businesses).where(eq(businesses.id, a.businessId));
+      const merged = withPolicyDefaults({ ...withPolicyDefaults(cur!.p), ...b.policies, onlineBooking: { ...withPolicyDefaults(cur!.p).onlineBooking, ...(b.policies.onlineBooking ?? {}) } });
+      (b as { policies: unknown }).policies = merged;
+    }
     if (b.timezone) {
       try {
         new Intl.DateTimeFormat('en-US', { timeZone: b.timezone });

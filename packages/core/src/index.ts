@@ -10,3 +10,4 @@ export * from './memberships.js';
 export * from './walks.js';
 export * from './reminders.js';
 export * from './payroll.js';
+export * from './policies.js';

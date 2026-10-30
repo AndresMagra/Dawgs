@@ -64,15 +64,21 @@ export default function Book() {
     const r = await attempt(() => api.post<Booking>('/me/bookings', { ...body, addOns: chosen }));
     if (!r) return;
     setExtras([]);
-    say(r.status === 'waitlist' ? "You're on the waitlist" : 'Request sent', r.status === 'waitlist' ? "We'll let you know if a spot opens." : 'The daycare will confirm it shortly.');
+    say(
+      r.status === 'waitlist' ? "You're on the waitlist" : r.status === 'confirmed' ? 'Booked!' : 'Request sent',
+      r.status === 'waitlist' ? "We'll let you know if a spot opens." : r.status === 'confirmed' ? "You're all set." : 'The daycare will confirm it shortly.',
+    );
     void list.reload();
   }
 
   return (
     <Screen>
       <H2>Book a stay</H2>
+      {business?.bookingPolicy && !business.bookingPolicy.onlineBooking.enabled ? (
+        <Notice tone="info" text={`${business.name} takes bookings by phone${business.phone ? ` at ${business.phone}` : ''}. You can still see and cancel your bookings here.`} />
+      ) : null}
       {dogs.length === 0 ? <Empty text="Add a dog first, on the Home tab." /> : null}
-      {dogs.length ? (
+      {dogs.length && business?.bookingPolicy?.onlineBooking.enabled !== false ? (
         <Card>
           {dogs.length > 1 ? <Pick label="Who" value={dog?.id ?? null} onChange={setDogId} options={dogs.map((d) => ({ value: d.id, label: d.name }))} /> : <P bold>{dog?.name}</P>}
           {dog && !dog.canEnter ? (
@@ -118,6 +124,11 @@ export default function Book() {
               <AddOnPicker options={menu.data.addOns} service={service} value={extras} onChange={setExtras} defaultAddress={menu.data.address} />
             </>
           ) : null}
+          {business?.bookingPolicy && (business.bookingPolicy.lateCancelFeeCents || business.bookingPolicy.noShowFeeCents) ? (
+            <P small muted>
+              {`Free to cancel up to ${business.bookingPolicy.cancelWindowHours} hours before.${business.bookingPolicy.lateCancelFeeCents ? ` Later than that: ${money(business.bookingPolicy.lateCancelFeeCents)}.` : ''}${business.bookingPolicy.noShowFeeCents ? ` No-show: ${money(business.bookingPolicy.noShowFeeCents)}.` : ''}`}
+            </P>
+          ) : null}
           <Button variant="primary" title={service === 'daycare' && avail.data?.available === false ? 'Join the waitlist' : 'Request booking'} disabled={!dog?.canEnter || (service === 'boarding' && !kennel)} onPress={book} />
         </Card>
       ) : null}
@@ -148,7 +159,16 @@ export default function Book() {
           {['requested', 'confirmed', 'waitlist'].includes(b.status) ? (
             <Row wrap>
               {menu.data?.addOns.some((a) => a.services.includes(b.service)) ? <Button small title="Add extras" onPress={() => setAdding(b)} /> : null}
-              <Button small variant="ghost" title="Cancel" onPress={async () => (await confirm('Cancel this booking?', '')) && (await attempt(() => api.post(`/me/bookings/${b.id}/cancel`, {}))) && void list.reload()} />
+              <Button
+                small
+                variant="ghost"
+                title="Cancel"
+                onPress={async () =>
+                  (await confirm('Cancel this booking?', b.cancelFeeCents ? `It's less than ${business?.bookingPolicy?.cancelWindowHours ?? 24} hours away, so a ${money(b.cancelFeeCents)} late-cancel fee applies.` : '')) &&
+                  (await attempt(() => api.post(`/me/bookings/${b.id}/cancel`, {}))) &&
+                  void list.reload()
+                }
+              />
             </Row>
           ) : null}
         </Card>

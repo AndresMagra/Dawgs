@@ -99,6 +99,7 @@ CREATE TABLE "businesses" (
 	"address" text,
 	"prices" jsonb NOT NULL,
 	"hours" jsonb NOT NULL,
+	"policies" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"daycare_capacity" integer DEFAULT 30 NOT NULL,
 	"required_vaccines" jsonb NOT NULL,
 	"inactive_after_days" integer DEFAULT 21 NOT NULL,

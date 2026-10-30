@@ -81,6 +81,12 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   `booking_add_ons` rows (name and price copied), validated BEFORE the booking
   is written, billed automatically at check-out, and listed on the run sheet,
   where "on the way"/"done" push to the owner.
+- **Policies:** `businesses.policies` (jsonb, read through `withPolicyDefaults`):
+  sales tax, tips, multi-dog discount, cancel window with late-cancel and
+  no-show fees, online-booking rules. `finishBill` in core applies them after
+  `computeBill`: discounts, then tax, then tip. Check-out discounts are
+  manager-only and need a reason; fees only on confirmed bookings, as an open
+  `other` invoice, and a manager can waive them.
 - **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.

@@ -6,7 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import { z } from 'zod';
-import { addLocalDays, inactiveDogs, localDateKey, dateKeyToInstant } from '@dawgs/core';
+import { ValidationError, addLocalDays, inactiveDogs, localDateKey, dateKeyToInstant, tipOptions, withPolicyDefaults, type Extras } from '@dawgs/core';
 import { bookings, careTasks, dogs, visits } from '@dawgs/db';
 import type { AppContext } from '../context.js';
 import { requireManager, requireStaff, sameBusiness } from '../auth.js';
@@ -83,8 +83,9 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
   app.post('/bookings/:id/status', async (req) => {
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
-    const { status } = parse(z.object({ status: z.enum(['confirmed', 'declined', 'cancelled', 'no_show']) }), req.body);
-    return setBookingStatus(ctx, { businessId: a.businessId, bookingId: id, status, actor: a.name });
+    const { status, waiveFee } = parse(z.object({ status: z.enum(['confirmed', 'declined', 'cancelled', 'no_show']), waiveFee: z.boolean().optional() }), req.body);
+    if (waiveFee) requireManager(req);
+    return setBookingStatus(ctx, { businessId: a.businessId, bookingId: id, status, actor: a.name, ...(waiveFee ? { waiveFee } : {}) });
   });
 
   app.post('/bookings/:id/add-ons', async (req) => {
@@ -141,18 +142,47 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     return moveVisit(ctx, { businessId: a.businessId, visitId: id, actor: a.name, ...b } as Parameters<typeof moveVisit>[1]);
   });
 
+  // A discount needs a reason and a manager; tips are anyone's to take.
+  const extrasShape = z.object({
+    discountCents: z.coerce.number().int().min(1).optional(),
+    discountPercent: z.coerce.number().min(1).max(100).optional(),
+    discountReason: z.string().min(1).max(120).optional(),
+    tipCents: z.coerce.number().int().min(0).max(100_000).optional(),
+  });
+  const toExtras = (req: Parameters<typeof requireStaff>[0], e: z.infer<typeof extrasShape>): Extras => {
+    const discount = e.discountCents || e.discountPercent;
+    if (discount) {
+      requireManager(req);
+      if (!e.discountReason?.trim()) throw new ValidationError('say why the discount is given');
+    }
+    return {
+      ...(discount ? { discount: { ...(e.discountCents ? { cents: e.discountCents } : { percent: e.discountPercent! }), reason: e.discountReason!.trim() } } : {}),
+      ...(e.tipCents ? { tipCents: e.tipCents } : {}),
+    };
+  };
+
   app.get('/visits/:id/bill', async (req) => {
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
-    const { addOns } = parse(z.object({ addOns: z.string().optional() }), req.query);
-    return previewBill(ctx, a.businessId, id, addOns ? addOns.split(',').filter(Boolean) : []);
+    const q = parse(extrasShape.extend({ addOns: z.string().optional() }), req.query);
+    const bill = await previewBill(ctx, a.businessId, id, q.addOns ? q.addOns.split(',').filter(Boolean) : [], toExtras(req, q));
+    const b = await loadBusiness(ctx.db, a.businessId);
+    return { ...bill, tipOptions: tipOptions(bill, withPolicyDefaults(b.policies)) };
   });
 
   app.post('/visits/:id/checkout', async (req) => {
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
-    const b = parse(z.object({ addOns: z.array(z.string()).optional(), pay: payShape, pickedUpBy: z.string().min(1).max(120).optional() }), req.body);
-    const out = await checkOut(ctx, { businessId: a.businessId, visitId: id, pay: b.pay, actor: a.name, ...(b.addOns ? { addOns: b.addOns } : {}), ...(b.pickedUpBy ? { pickedUpBy: b.pickedUpBy } : {}) });
+    const b = parse(extrasShape.extend({ addOns: z.array(z.string()).optional(), pay: payShape, pickedUpBy: z.string().min(1).max(120).optional() }), req.body);
+    const out = await checkOut(ctx, {
+      businessId: a.businessId,
+      visitId: id,
+      pay: b.pay,
+      actor: a.name,
+      extras: toExtras(req, b),
+      ...(b.addOns ? { addOns: b.addOns } : {}),
+      ...(b.pickedUpBy ? { pickedUpBy: b.pickedUpBy } : {}),
+    });
     if (b.pickedUpBy) await notifyPickup(ctx, id, b.pickedUpBy);
     return out;
   });

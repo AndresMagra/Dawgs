@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { BOOKING_STATUS, dateKeyLabel, money, todayKey, type AddOn, type AddOnRequest, type Booking, type Dog } from '@dawgs/client';
 import { AddOnPicker, Avatar, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
-import { attempt } from '../../lib/alert';
+import { attempt, say } from '../../lib/alert';
 import { DogPicker } from '../../lib/DogPicker';
 
 export default function BookingsScreen() {
@@ -22,8 +22,12 @@ export default function BookingsScreen() {
   }
   const requests = (list.data?.bookings ?? []).filter((b) => b.status === 'requested').length;
 
-  async function setStatus(id: string, status: string) {
-    if (await attempt(() => api.post(`/bookings/${id}/status`, { status }))) void list.reload();
+  const { user } = useSession();
+  async function setStatus(id: string, status: string, waiveFee = false) {
+    const r = await attempt(() => api.post<{ feeInvoiceId: string | null }>(`/bookings/${id}/status`, { status, ...(waiveFee ? { waiveFee } : {}) }));
+    if (!r) return;
+    if (r.feeInvoiceId) say('Fee added', `A ${status === 'no_show' ? 'no-show' : 'late-cancel'} fee is now an open invoice on the client's account.`);
+    void list.reload();
   }
 
   return (
@@ -65,6 +69,7 @@ export default function BookingsScreen() {
                 {b.status === 'requested' || b.status === 'waitlist' ? <Button small variant="primary" title="Confirm" onPress={() => setStatus(b.id, 'confirmed')} /> : null}
                 {b.status === 'requested' ? <Button small title="Decline" onPress={() => setStatus(b.id, 'declined')} /> : null}
                 {['requested', 'confirmed', 'waitlist'].includes(b.status) ? <Button small variant="ghost" title="Cancel" onPress={() => setStatus(b.id, 'cancelled')} /> : null}
+                {b.status === 'confirmed' && user?.role === 'manager' ? <Button small variant="ghost" title="Cancel, no fee" onPress={() => setStatus(b.id, 'cancelled', true)} /> : null}
                 {b.status === 'confirmed' && day < todayKey(tz, 1) ? <Button small variant="ghost" title="No-show" onPress={() => setStatus(b.id, 'no_show')} /> : null}
               </Row>
             </Card>

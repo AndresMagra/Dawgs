@@ -52,7 +52,7 @@ export interface BillLine {
   amount: Cents;
   /** Set on credit lines: which credits and how many this line spends. */
   credit?: { kind: CreditKind; count: number };
-  kind: 'service' | 'credit' | 'fee' | 'addon';
+  kind: 'service' | 'credit' | 'fee' | 'addon' | 'discount' | 'tax' | 'tip';
 }
 
 export interface Bill {

@@ -9,7 +9,7 @@
 import type { FastifyInstance } from 'fastify';
 import { and, asc, desc, eq, gte, inArray, lt, ne, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { NotFoundError, ValidationError, addLocalDays, localDateKey } from '@dawgs/core';
+import { NotFoundError, ValidationError, addLocalDays, lateCancelFee, localDateKey, withPolicyDefaults } from '@dawgs/core';
 import {
   addOns,
   bookings,
@@ -243,7 +243,13 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
     const q = parse(z.object({ from: dateKey.optional(), to: dateKey.optional() }), req.query);
     const rows = await listBookings(ctx.db, a.businessId, q.from ?? addLocalDays(today, -60), q.to ?? addLocalDays(today, 180), await myDogIds(a.ownerId));
     const extras = await addOnsForBookings(ctx, rows.map((r) => r.id));
-    return rows.map((r) => ({ ...r, addOns: (extras.get(r.id) ?? []).map(({ doneBy: _by, createdBy: _cb, ...x }) => x) }));
+    const policies = withPolicyDefaults(b.policies);
+    return rows.map((r) => ({
+      ...r,
+      addOns: (extras.get(r.id) ?? []).map(({ doneBy: _by, createdBy: _cb, ...x }) => x),
+      // So the app can warn before a cancel that costs money.
+      cancelFeeCents: r.status === 'confirmed' ? lateCancelFee(policies, r.date ?? r.arrive!, b.timezone, ctx.now()) : 0,
+    }));
   });
 
   /** What owners can add to a booking: only the add-ons the daycare lets them book. */

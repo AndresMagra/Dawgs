@@ -24,7 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { BillLine, HoursPolicy, PriceList, Wallet } from '@dawgs/core';
+import type { BillLine, HoursPolicy, Policies, PriceList, Wallet } from '@dawgs/core';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -43,6 +43,8 @@ export const businesses = pgTable('businesses', {
   address: text('address'),
   prices: jsonb('prices').$type<PriceList>().notNull(),
   hours: jsonb('hours').$type<HoursPolicy>().notNull(),
+  /** Tax, tips, discounts, cancellation and online-booking rules; missing keys fall back to DEFAULT_POLICIES. */
+  policies: jsonb('policies').$type<Partial<Policies>>().notNull().default({}),
   daycareCapacity: integer('daycare_capacity').notNull().default(30),
   requiredVaccines: jsonb('required_vaccines').$type<string[]>().notNull(),
   /** Days without a visit before a regular shows on the manager's reminder list. */

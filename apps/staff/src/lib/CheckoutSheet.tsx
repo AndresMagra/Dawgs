@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { money, type AddOn, type AuthorizedPerson, type Bill, type PayOutcome } from '@dawgs/client';
-import { Button, Divider, Line, Notice, P, Pick, Row, Sheet, useLoad } from '@dawgs/ui';
-import { api } from './session';
+import { Button, Divider, Field, Line, Notice, P, Pick, Row, Sheet, useLoad } from '@dawgs/ui';
+import { api, useSession } from './session';
 import { attempt, say } from './alert';
 
 /** Bill preview with add-ons, then card on file, cash, or "pay later" (send a link). */
@@ -16,13 +16,36 @@ export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { vis
     [visitId],
   );
   const [pickedUpBy, setPickedUpBy] = useState<string | null>(null);
+  const { user } = useSession();
+  const [tip, setTip] = useState<number>(0);
+  const [customTip, setCustomTip] = useState('');
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discount, setDiscount] = useState({ amount: '', percent: '', reason: '' });
+  const discountParams = ((): Record<string, string | number> => {
+    const reason = discount.reason.trim();
+    if (!reason) return {};
+    if (Number(discount.percent) > 0) return { discountPercent: Number(discount.percent), discountReason: reason };
+    if (Number(discount.amount) > 0) return { discountCents: Math.round(Number(discount.amount) * 100), discountReason: reason };
+    return {};
+  })();
+  const tipCents = customTip ? Math.round((Number(customTip) || 0) * 100) : tip;
+  const extrasParams: Record<string, string | number> = { ...discountParams, ...(tipCents > 0 ? { tipCents } : {}) };
   useEffect(() => {
     if (!visitId) return;
     setDeclined(null);
     setOpenInvoice(null);
     setPickedUpBy(null);
-    void api.get<Bill>(`/visits/${visitId}/bill?addOns=${extras.join(',')}`).then(setBill).catch(() => setBill(null));
-  }, [visitId, extras]);
+    setTip(0);
+    setCustomTip('');
+    setDiscount({ amount: '', percent: '', reason: '' });
+    setDiscountOpen(false);
+  }, [visitId]);
+  useEffect(() => {
+    if (!visitId) return;
+    const q = new URLSearchParams({ addOns: extras.join(','), ...Object.fromEntries(Object.entries(extrasParams).map(([k, v]) => [k, String(v)])) });
+    void api.get<Bill>(`/visits/${visitId}/bill?${q.toString()}`).then(setBill).catch(() => setBill(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitId, extras, JSON.stringify(extrasParams)]);
 
   // Choosing who collects the dog comes before payment; a retry after a decline skips it.
   const needsPickup = !openInvoice && !pickedUpBy;
@@ -31,7 +54,7 @@ export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { vis
     if (!visitId) return;
     const r = openInvoice
       ? await attempt(() => api.post<PayOutcome>(`/invoices/${openInvoice}/pay`, { pay: { method } }))
-      : await attempt(() => api.post<PayOutcome>(`/visits/${visitId}/checkout`, { addOns: extras, pay: { method }, ...(pickedUpBy ? { pickedUpBy } : {}) }));
+      : await attempt(() => api.post<PayOutcome>(`/visits/${visitId}/checkout`, { addOns: extras, ...extrasParams, pay: { method }, ...(pickedUpBy ? { pickedUpBy } : {}) }));
     if (!r) return;
     if (r.declined) {
       setOpenInvoice(r.invoice.id);
@@ -73,10 +96,35 @@ export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { vis
       {bill ? (
         <>
           {bill.lines.map((l, i) => (
-            <Line key={i} left={l.text} right={money(l.amount)} muted={l.kind === 'credit'} />
+            <Line key={i} left={l.text} right={money(l.amount)} muted={l.kind === 'credit' || l.kind === 'discount'} />
           ))}
           <Divider />
           <Line left="Total" right={money(bill.total)} bold />
+          {!openInvoice && bill.tipOptions?.length ? (
+            <>
+              <P small muted>Tip</P>
+              <Row wrap>
+                <Button small title="No tip" variant={!tipCents ? 'primary' : 'secondary'} onPress={() => { setTip(0); setCustomTip(''); }} />
+                {bill.tipOptions.filter((o) => o.cents > 0).map((o) => (
+                  <Button key={o.percent} small title={`${o.percent}% · ${money(o.cents)}`} variant={!customTip && tip === o.cents ? 'primary' : 'secondary'} onPress={() => { setTip(o.cents); setCustomTip(''); }} />
+                ))}
+              </Row>
+              <Field label="Other tip ($)" value={customTip} onChangeText={setCustomTip} keyboardType="decimal-pad" />
+            </>
+          ) : null}
+          {!openInvoice && user?.role === 'manager' ? (
+            discountOpen ? (
+              <>
+                <Row>
+                  <Field label="Discount $" value={discount.amount} onChangeText={(v) => setDiscount({ ...discount, amount: v, percent: '' })} keyboardType="decimal-pad" />
+                  <Field label="or %" value={discount.percent} onChangeText={(v) => setDiscount({ ...discount, percent: v, amount: '' })} keyboardType="decimal-pad" />
+                </Row>
+                <Field label="Reason (shows on the receipt)" value={discount.reason} onChangeText={(v) => setDiscount({ ...discount, reason: v })} placeholder="Birthday, regular, made a mistake…" />
+              </>
+            ) : (
+              <Button small variant="ghost" title="Give a discount" onPress={() => setDiscountOpen(true)} />
+            )
+          ) : null}
         </>
       ) : (
         <P muted>Working out the bill…</P>

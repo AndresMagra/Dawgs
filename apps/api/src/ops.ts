@@ -14,8 +14,13 @@ import {
   ConflictError,
   NotFoundError,
   ValidationError,
+  addLocalDays,
   atLocalTime,
   computeBill,
+  finishBill,
+  lateCancelFee,
+  withPolicyDefaults,
+  type Extras,
   dateKeyToInstant,
   estimateStay,
   kennelIsFree,
@@ -149,6 +154,14 @@ export async function createBooking(
   const b = await loadBusiness(ctx.db, businessId);
   const dog = await assertDogMayCome(ctx.db, businessId, input.dogId, ctx.now());
   const today = localDateKey(ctx.now(), b.timezone);
+  const rules = withPolicyDefaults(b.policies).onlineBooking;
+  if (source === 'owner') {
+    if (!rules.enabled) throw new ValidationError(`${b.name} takes bookings by phone or at the desk`);
+    const first = input.service === 'daycare' ? input.date : input.arrive;
+    if (first > addLocalDays(today, rules.daysAhead)) throw new ValidationError(`bookings open ${rules.daysAhead} days ahead`);
+  }
+  // With auto-approve on, an owner's booking is confirmed straight away when there is room.
+  const ownerStatus: BookingStatus = rules.autoApprove ? 'confirmed' : 'requested';
 
   if (input.service === 'daycare') {
     if (input.date < today) throw new ValidationError('that date has passed');
@@ -159,7 +172,7 @@ export async function createBooking(
     if (dup.length) throw new ConflictError(`${dog.name} is already booked that day`);
     const full = (await daycareCount(ctx.db, businessId, input.date)) >= b.daycareCapacity;
     if (full && source === 'owner') throw new ConflictError('that day is full; try another day or ask to be waitlisted');
-    const status: BookingStatus = full ? 'waitlist' : source === 'owner' ? 'requested' : 'confirmed';
+    const status: BookingStatus = full ? 'waitlist' : source === 'owner' ? ownerStatus : 'confirmed';
     const extras = await planAddOns(ctx, { businessId, stay: { service: 'daycare', date: input.date, arrive: null, depart: null, dogId: input.dogId }, requests: input.addOns ?? [], source, actor: args.actor });
     const [row] = await ctx.db
       .insert(bookings)
@@ -209,7 +222,7 @@ export async function createBooking(
       depart: range.depart,
       kennelId: kennel.id,
       play: input.play ?? false,
-      status: source === 'owner' ? 'requested' : 'confirmed',
+      status: source === 'owner' ? ownerStatus : 'confirmed',
       source,
       notes: input.notes ?? null,
       estimateCents: estimateStay({ nights: nightsOf(range), kennelType: kennel.type, play: input.play ?? false, prices: b.prices }),
@@ -222,7 +235,7 @@ export async function createBooking(
 
 export async function setBookingStatus(
   ctx: AppContext,
-  args: { businessId: string; bookingId: string; status: 'confirmed' | 'declined' | 'cancelled' | 'no_show'; actor: string },
+  args: { businessId: string; bookingId: string; status: 'confirmed' | 'declined' | 'cancelled' | 'no_show'; actor: string; waiveFee?: boolean },
 ) {
   const [bk] = await ctx.db.select().from(bookings).where(eq(bookings.id, args.bookingId));
   if (!bk || bk.businessId !== args.businessId) throw new NotFoundError('booking');
@@ -235,7 +248,27 @@ export async function setBookingStatus(
   }
   await ctx.db.update(bookings).set({ status: args.status }).where(eq(bookings.id, bk.id));
   await audit(ctx.db, args.businessId, args.actor, `booking.${args.status}`, `Booking ${bk.service} ${bk.date ?? bk.arrive} → ${args.status}`);
-  return { ...bk, status: args.status };
+  let feeInvoiceId: string | null = null;
+  // Only a booking the daycare had agreed to costs anything to cancel or miss.
+  if ((args.status === 'cancelled' || args.status === 'no_show') && bk.status === 'confirmed' && !args.waiveFee) {
+    const b = await loadBusiness(ctx.db, args.businessId);
+    const policies = withPolicyDefaults(b.policies);
+    const first = bk.date ?? bk.arrive!;
+    const fee = args.status === 'no_show' ? policies.noShowFeeCents : lateCancelFee(policies, first, b.timezone, ctx.now());
+    if (fee > 0) {
+      const [dog] = await ctx.db.select().from(dogs).where(eq(dogs.id, bk.dogId));
+      const inv = await createInvoice(ctx.db, {
+        businessId: args.businessId,
+        ownerId: dog!.ownerId,
+        dogId: dog!.id,
+        category: 'other',
+        lines: [{ kind: 'fee', text: `${args.status === 'no_show' ? 'No-show' : 'Late cancellation'}: ${dog!.name}, ${bk.service} ${first}`, amount: fee }],
+      });
+      feeInvoiceId = inv.id;
+      await audit(ctx.db, args.businessId, args.actor, 'booking.fee', `${args.status === 'no_show' ? 'No-show' : 'Late-cancel'} fee invoice #${inv.number}`);
+    }
+  }
+  return { ...bk, status: args.status, feeInvoiceId };
 }
 
 /** Check a dog in, from a booking or as a walk-in. */
@@ -418,13 +451,28 @@ async function bookedAddOns(ctx: AppContext, bookingId: string | null): Promise<
   }));
 }
 
-export async function previewBill(ctx: AppContext, businessId: string, visitId: string, addOnCodes: readonly string[] = []) {
+/** Another of the family's dogs came to daycare earlier the same day, so this one is the extra dog. */
+async function isExtraDog(ctx: AppContext, v: typeof visits.$inferSelect, tz: string) {
+  if (v.service !== 'daycare') return false;
+  const [dog] = await ctx.db.select({ ownerId: dogs.ownerId }).from(dogs).where(eq(dogs.id, v.dogId));
+  const day = localDateKey(v.checkedInAt.getTime(), tz);
+  const siblings = await ctx.db
+    .select({ id: visits.id, at: visits.checkedInAt })
+    .from(visits)
+    .innerJoin(dogs, eq(dogs.id, visits.dogId))
+    .where(and(eq(dogs.ownerId, dog!.ownerId), ne(visits.dogId, v.dogId), eq(visits.service, 'daycare'), lt(visits.checkedInAt, v.checkedInAt)));
+  return siblings.some((x) => localDateKey(x.at.getTime(), tz) === day);
+}
+
+export async function previewBill(ctx: AppContext, businessId: string, visitId: string, addOnCodes: readonly string[] = [], extras: Extras = {}) {
   const [v] = await ctx.db.select().from(visits).where(eq(visits.id, visitId));
   if (!v || v.businessId !== businessId) throw new NotFoundError('visit');
   const b = await loadBusiness(ctx.db, businessId);
+  const policies = withPolicyDefaults(b.policies);
+  const multiDog = policies.multiDogPercent > 0 && (await isExtraDog(ctx, v, b.timezone));
   const kennel = v.kennelId ? (await ctx.db.select().from(kennels).where(eq(kennels.id, v.kennelId)))[0] : undefined;
   const wallet = await walletOf(ctx.db, v.dogId, ctx.now());
-  return computeBill({
+  const bill = computeBill({
     visit:
       v.service === 'boarding'
         ? {
@@ -443,6 +491,7 @@ export async function previewBill(ctx: AppContext, businessId: string, visitId: 
     wallet,
     addOns: [...(await bookedAddOns(ctx, v.bookingId)), ...(await resolveAddOns(ctx.db, businessId, addOnCodes))],
   });
+  return finishBill(bill, policies, { ...extras, multiDog });
 }
 
 /**
@@ -451,12 +500,12 @@ export async function previewBill(ctx: AppContext, businessId: string, visitId: 
  */
 export async function checkOut(
   ctx: AppContext,
-  args: { businessId: string; visitId: string; addOns?: readonly string[]; pay: PayInput; actor: string; pickedUpBy?: string },
+  args: { businessId: string; visitId: string; addOns?: readonly string[]; pay: PayInput; actor: string; pickedUpBy?: string; extras?: Extras },
 ): Promise<PayOutcome & { visit: typeof visits.$inferSelect }> {
   const [v] = await ctx.db.select().from(visits).where(eq(visits.id, args.visitId));
   if (!v || v.businessId !== args.businessId) throw new NotFoundError('visit');
   if (v.checkedOutAt) throw new ConflictError('already checked out');
-  const bill = await previewBill(ctx, args.businessId, v.id, args.addOns ?? []);
+  const bill = await previewBill(ctx, args.businessId, v.id, args.addOns ?? [], args.extras ?? {});
   const [dog] = await ctx.db.select().from(dogs).where(eq(dogs.id, v.dogId));
   const now = ctx.now();
   const [closed] = await ctx.db
