@@ -140,7 +140,7 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   /** An owner's upload counts once staff have checked the certificate. */
-  app.post('/me/dogs/:id/vaccines', async (req) => {
+  app.post('/me/dogs/:id/vaccines', { bodyLimit: 5_000_000 }, async (req) => {
     const a = requireOwner(req);
     const { id } = req.params as { id: string };
     const d = await myDog(a.ownerId, id);

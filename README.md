@@ -8,8 +8,10 @@ Sold to daycares as a service; each daycare connects its own Stripe and Twilio.
 packages/core   business rules: pricing, credits, vaccines, kennels, memberships, walks, payroll
 packages/db     Drizzle schema, migrations, PGlite (dev/tests) or Postgres
 apps/api        Fastify API used by every app
-apps/staff      (coming) Expo app: website + iOS + Android for managers and staff
-apps/customer   (coming) Expo app: website + iOS + Android for pet owners
+packages/client typed API client shared by both apps
+packages/ui     shared React Native components
+apps/staff      Expo app: website + iOS + Android for managers and staff
+apps/customer   Expo app: website + iOS + Android for pet owners
 ```
 
 ```bash

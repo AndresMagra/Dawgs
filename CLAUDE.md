@@ -14,9 +14,17 @@ packages/core   business rules, no I/O: pricing/bill, credits, vaccines, kennels
                 memberships (retry 3 days, cancel after 4), GPS walks, payroll (OT > 40 h)
 packages/db     Drizzle schema + migrations; PGlite for dev/tests, Postgres in prod
 apps/api        Fastify API. Every app uses only these routes.
-apps/staff      Expo app (web + iOS + Android) for managers and staff   [coming]
-apps/customer   Expo app (web + iOS + Android) for pet owners          [coming]
+packages/client typed API client + formatting, shared by both apps
+packages/ui     React Native components (web too): theme, Sheet, Pick, SignaturePad, RouteMap
+apps/staff      Expo app (web + iOS + Android) for managers and staff
+apps/customer   Expo app (web + iOS + Android) for pet owners; also hosts /pay/<token>
 ```
+
+Run an app: `cd apps/staff && npx expo start --web` (API URL from
+`EXPO_PUBLIC_API_URL`, default http://localhost:3001). Typecheck with
+`npx tsc --noEmit`; `npx expo export --platform web` builds the website.
+`expo install` cannot reach Expo's servers from cloud sessions: pin versions from
+`node_modules/expo/bundledNativeModules.json`.
 
 ## Build and test
 
@@ -57,6 +65,14 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   whole server runs on `SimulatedGateway` (Stripe test-card names).
 - **Texts:** each daycare's OWN Twilio; token AES-GCM encrypted with
   DAWGS_SECRET. Without it, `ConsoleSms` logs. Honour STOP/START.
+- **Invoices out:** `invoicing.ts` emails (platform Resend key, daycare name as
+  sender, daycare email as reply-to) and texts each invoice with a pay link;
+  every attempt is an `invoice_sends` row. Reminders at 1/7/14 days overdue,
+  claimed by bumping `reminders_sent`. Without RESEND_API_KEY + DAWGS_MAIL_FROM,
+  `ConsoleMail` logs.
+- **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
+  up joins the same owner record. Removing someone deactivates them and closes
+  a co-owner's login. Check-out records `visits.picked_up_by`.
 - **Vaccines** count only once staff verify them (owner uploads wait).
 - **Waivers** are versioned; editing the text asks everyone to sign again; a
   signature stores the exact text and its SHA-256.

@@ -67,7 +67,8 @@ export const dogShape = z.object({
 export const vaccineShape = z.object({
   name: z.string().min(1),
   expiresOn: dateKey,
-  documentUrl: z.string().nullable().optional(),
+  // A link, or a photo of the certificate taken in the app as a data URL (kept under ~4 MB).
+  documentUrl: z.string().max(4_500_000).nullable().optional(),
 });
 
 const clean = <T extends object>(o: T) =>
