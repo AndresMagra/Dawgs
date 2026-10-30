@@ -1,16 +1,8 @@
 import { useEffect, useState } from 'react';
-import { money, type AuthorizedPerson, type Bill, type PayOutcome } from '@dawgs/client';
+import { money, type AddOn, type AuthorizedPerson, type Bill, type PayOutcome } from '@dawgs/client';
 import { Button, Divider, Line, Notice, P, Pick, Row, Sheet, useLoad } from '@dawgs/ui';
 import { api } from './session';
 import { attempt, say } from './alert';
-
-interface AddOn {
-  id: string;
-  code: string;
-  name: string;
-  priceCents: number;
-  active: boolean;
-}
 
 /** Bill preview with add-ons, then card on file, cash, or "pay later" (send a link). */
 export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { visitId: string | null; dogName: string; card: string | null; onClose: () => void; onDone: () => void }) {
@@ -59,7 +51,7 @@ export function CheckoutSheet({ visitId, dogName, card, onClose, onDone }: { vis
         <Pick
           label="Add-ons"
           value={null}
-          options={(settings.data?.addOns ?? []).filter((a) => a.active).map((a) => ({ value: a.code, label: `${extras.includes(a.code) ? '✓ ' : ''}${a.name} ${money(a.priceCents)}` }))}
+          options={(settings.data?.addOns ?? []).filter((a) => a.active && a.kind === 'extra').map((a) => ({ value: a.code, label: `${extras.includes(a.code) ? '✓ ' : ''}${a.name} ${money(a.priceCents)}` }))}
           onChange={(code) => setExtras((x) => (x.includes(code) ? x.filter((c) => c !== code) : [...x, code]))}
         />
       )}

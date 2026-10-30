@@ -11,6 +11,7 @@ import { and, asc, desc, eq, gte, inArray, lt, ne, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { NotFoundError, ValidationError, addLocalDays, localDateKey } from '@dawgs/core';
 import {
+  addOns,
   bookings,
   dogs,
   invoices,
@@ -42,6 +43,7 @@ import { availabilityShape, bookingShape } from './operations.js';
 import { dogShape, ownerShape, resolveNewCard, vaccineShape } from './people.js';
 import { signWaiver } from './manage.js';
 import { audit } from '../audit.js';
+import { addOnRequestShape, addOnsForBookings, addToBooking, cancelBookingAddOn } from '../addons.js';
 
 export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
   async function myDog(ownerId: string, dogId: string) {
@@ -239,7 +241,33 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
     const b = await loadBusiness(ctx.db, a.businessId);
     const today = localDateKey(ctx.now(), b.timezone);
     const q = parse(z.object({ from: dateKey.optional(), to: dateKey.optional() }), req.query);
-    return listBookings(ctx.db, a.businessId, q.from ?? addLocalDays(today, -60), q.to ?? addLocalDays(today, 180), await myDogIds(a.ownerId));
+    const rows = await listBookings(ctx.db, a.businessId, q.from ?? addLocalDays(today, -60), q.to ?? addLocalDays(today, 180), await myDogIds(a.ownerId));
+    const extras = await addOnsForBookings(ctx, rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, addOns: (extras.get(r.id) ?? []).map(({ doneBy: _by, createdBy: _cb, ...x }) => x) }));
+  });
+
+  /** What owners can add to a booking: only the add-ons the daycare lets them book. */
+  app.get('/me/add-ons', async (req) => {
+    const a = requireOwner(req);
+    const rows = await ctx.db
+      .select()
+      .from(addOns)
+      .where(and(eq(addOns.businessId, a.businessId), eq(addOns.active, true), eq(addOns.ownerBookable, true)))
+      .orderBy(asc(addOns.sort), asc(addOns.name));
+    const [me] = await ctx.db.select({ address: owners.address }).from(owners).where(eq(owners.id, a.ownerId));
+    return { addOns: rows.map(({ businessId: _b, dailyLimit: _l, ownerBookable: _o, ...x }) => x), address: me?.address ?? null };
+  });
+  app.post('/me/bookings/:id/add-ons', async (req) => {
+    const a = requireOwner(req);
+    const { id } = req.params as { id: string };
+    const [bk] = await ctx.db.select().from(bookings).where(eq(bookings.id, id));
+    if (!bk) throw new NotFoundError('booking');
+    await myDog(a.ownerId, bk.dogId);
+    return addToBooking(ctx, { businessId: a.businessId, bookingId: id, request: parse(addOnRequestShape, req.body), source: 'owner', actor: `${a.name} (app)` });
+  });
+  app.delete('/me/booking-add-ons/:id', async (req) => {
+    const a = requireOwner(req);
+    return cancelBookingAddOn(ctx, { businessId: a.businessId, id: (req.params as { id: string }).id, actor: `${a.name} (app)`, ownerId: a.ownerId });
   });
 
   app.post('/me/bookings', async (req) => {

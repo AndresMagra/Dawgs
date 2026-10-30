@@ -65,7 +65,7 @@ export interface Dog {
   medications: { name: string; dose: string; when: string }[];
   behaviour: { escapeRisk?: boolean; leashReactive?: boolean; eatsAlone?: boolean; notes?: string };
   ownerId: string;
-  owner: { id: string; name: string; phone: string | null; email: string | null };
+  owner: { id: string; name: string; phone: string | null; email: string | null; address?: string | null };
   vaccines: VaccineStatus[];
   vaccineState: VaccineStatus['state'];
   vaccinesAwaitingReview: number;
@@ -119,6 +119,7 @@ export interface Booking {
   notes: string | null;
   estimateCents: number | null;
   dog?: Dog;
+  addOns?: BookingAddOn[];
 }
 
 export interface Visit {
@@ -445,4 +446,49 @@ export interface LeadActivity {
   body: string;
   by: string;
   at: string;
+}
+
+export interface AddOn {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  kind: 'extra' | 'pickup' | 'dropoff';
+  category: string | null;
+  priceCents: number;
+  pricing: 'flat' | 'per_day';
+  durationMinutes: number | null;
+  services: ('daycare' | 'boarding')[];
+  ownerBookable?: boolean;
+  needsTime: boolean;
+  dailyLimit?: number | null;
+  sort: number;
+  active: boolean;
+}
+
+export interface BookingAddOn {
+  id: string;
+  bookingId: string;
+  addOnId: string;
+  kind: AddOn['kind'];
+  name: string;
+  code: string;
+  unitCents: number;
+  quantity: number;
+  date: string;
+  time: string | null;
+  address: string | null;
+  notes: string | null;
+  status: 'scheduled' | 'on_way' | 'done' | 'cancelled';
+  doneBy?: string | null;
+  doneAt: string | null;
+}
+
+/** What a booking form sends for each chosen add-on. */
+export interface AddOnRequest {
+  addOnId: string;
+  quantity?: number;
+  time?: string | null;
+  address?: string | null;
+  notes?: string | null;
 }

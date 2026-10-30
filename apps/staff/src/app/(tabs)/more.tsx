@@ -6,6 +6,7 @@ import { api, useSession } from '../../lib/session';
 const ITEMS: { href: string; title: string; text: string; manager?: boolean }[] = [
   { href: '/owners', title: 'Owners', text: 'Clients, cards, invoices, forms' },
   { href: '/leads', title: 'Leads', text: 'Inquiries, tours, follow-ups, new clients' },
+  { href: '/run-sheet', title: 'Run sheet', text: 'Pickups, drop-offs and booked services' },
   { href: '/training', title: 'Training', text: 'Classes, private lessons, progress' },
   { href: '/packages', title: 'Packs & memberships', text: 'Prepaid credits and monthly plans' },
   { href: '/chat', title: 'Team chat', text: 'The whole team and direct messages' },

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import * as Linking from 'expo-linking';
-import { money, type Business, type PriceList, type WalkType } from '@dawgs/client';
+import { addOnPrice, money, type AddOn, type Business, type PriceList, type WalkType } from '@dawgs/client';
 import { Button, Card, Chip, Field, H2, Line, Notice, P, Row, Screen, Segmented, Sheet, Toggle, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../lib/session';
 import { attempt, confirm, say } from '../lib/alert';
 import { FormSheet, orNull } from '../lib/sheets';
+import { AddOnSheet } from '../lib/addons';
 
 interface Settings {
   business: Business & {
@@ -23,7 +24,7 @@ interface Settings {
   };
   yards: { id: string; name: string; capacity: number; note: string | null; maxWeightLb: number | null }[];
   kennels: { id: string; name: string; type: 'suite' | 'run'; active: boolean }[];
-  addOns: { id: string; code: string; name: string; priceCents: number; active: boolean }[];
+  addOns: AddOn[];
   walkTypes: WalkType[];
 }
 
@@ -38,7 +39,7 @@ const PRICE_LABELS: Record<keyof PriceList, string> = {
   lateCheckout: 'Late boarding checkout',
 };
 
-type ListPath = 'yards' | 'kennels' | 'add-ons' | 'walk-types';
+type ListPath = 'yards' | 'kennels' | 'walk-types';
 
 export default function SettingsScreen() {
   const { refresh } = useSession();
@@ -46,6 +47,7 @@ export default function SettingsScreen() {
   const [tab, setTab] = useState<'business' | 'prices' | 'rooms' | 'services' | 'payments' | 'texts'>('business');
   const [sheet, setSheet] = useState<null | 'business' | 'prices' | 'twilio' | { path: ListPath; row?: Record<string, unknown> }>(null);
   const [testTo, setTestTo] = useState('');
+  const [addOn, setAddOn] = useState<AddOn | 'new' | null>(null);
   const b = s.data?.business;
   if (!b) return <Screen><P muted>Loading…</P></Screen>;
   const reload = () => {
@@ -131,10 +133,15 @@ export default function SettingsScreen() {
 
       {tab === 'services' ? (
         <>
-          <H2 right={<Button small title="Add" onPress={() => setSheet({ path: 'add-ons' })} />}>Add-ons at checkout</H2>
+          <H2 right={<Button small title="Add" onPress={() => setAddOn('new')} />}>Add-on services and transport</H2>
+          <P small muted>Anything you sell with a visit: grooming, treats, meds, pickup and drop-off. Clients can add them when they book; whatever was booked is on the bill at check-out.</P>
           {s.data!.addOns.map((a) => (
-            <Card key={a.id} onPress={() => setSheet({ path: 'add-ons', row: a })}>
-              <Line left={a.name} right={`${money(a.priceCents)}${a.active ? '' : ' · off'}`} muted={!a.active} />
+            <Card key={a.id} onPress={() => setAddOn(a)}>
+              <Line
+                left={`${a.name}${a.kind === 'pickup' ? ' · pickup' : a.kind === 'dropoff' ? ' · drop-off' : a.category ? ` · ${a.category}` : ''}`}
+                right={`${addOnPrice(a)}${a.active ? '' : ' · off'}`}
+                muted={!a.active}
+              />
             </Card>
           ))}
           <H2 right={<Button small title="Add" onPress={() => setSheet({ path: 'walk-types' })} />}>Walks</H2>
@@ -282,6 +289,7 @@ export default function SettingsScreen() {
           return r;
         }}
       />
+      {addOn ? <AddOnSheet {...(addOn === 'new' ? {} : { row: addOn })} onClose={() => setAddOn(null)} onDone={() => { setAddOn(null); reload(); }} /> : null}
       {sheet && typeof sheet === 'object' ? <ListItemSheet path={sheet.path} row={sheet.row} onClose={() => setSheet(null)} onDone={reload} /> : null}
     </Screen>
   );
@@ -298,12 +306,6 @@ const LIST_FIELDS: Record<ListPath, { key: string; label: string; kind?: 'money'
     { key: 'name', label: 'Name' },
     { key: 'type', label: 'Type', kind: 'type' },
     { key: 'active', label: 'In use', kind: 'bool' },
-  ],
-  'add-ons': [
-    { key: 'name', label: 'Name' },
-    { key: 'code', label: 'Short code (e.g. bath)' },
-    { key: 'priceCents', label: 'Price ($)', kind: 'money' },
-    { key: 'active', label: 'Offered', kind: 'bool' },
   ],
   'walk-types': [
     { key: 'name', label: 'Name' },

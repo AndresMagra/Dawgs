@@ -339,14 +339,62 @@ export const careTasks = pgTable('care_tasks', {
   doneBy: text('done_by'),
 });
 
+/**
+ * Anything extra the daycare sells with a stay, set up by the manager: a bath,
+ * a nail trim, a pup cup, or transport. `pickup` brings the dog in from home
+ * on the first day; `dropoff` takes it home on the last.
+ */
 export const addOns = pgTable('add_ons', {
   id: id(),
   businessId: biz(),
   code: text('code').notNull(),
   name: text('name').notNull(),
+  description: text('description'),
+  kind: text('kind').$type<'extra' | 'pickup' | 'dropoff'>().notNull().default('extra'),
+  category: text('category'),
   priceCents: integer('price_cents').notNull(),
+  /** `per_day` multiplies by the nights of a stay (one for a daycare day). */
+  pricing: text('pricing').$type<'flat' | 'per_day'>().notNull().default('flat'),
+  durationMinutes: integer('duration_minutes'),
+  services: jsonb('services').$type<('daycare' | 'boarding')[]>().notNull().default(['daycare', 'boarding']),
+  ownerBookable: boolean('owner_bookable').notNull().default(true),
+  needsTime: boolean('needs_time').notNull().default(false),
+  /** How many can be booked on one day (van seats, groomer slots); null is no limit. */
+  dailyLimit: integer('daily_limit'),
+  sort: integer('sort').notNull().default(0),
   active: boolean('active').notNull().default(true),
 });
+
+/** An add-on booked with a stay; name and price are copied so later price changes don't rewrite it. */
+export const bookingAddOns = pgTable(
+  'booking_add_ons',
+  {
+    id: id(),
+    businessId: biz(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id),
+    addOnId: uuid('add_on_id')
+      .notNull()
+      .references(() => addOns.id),
+    kind: text('kind').$type<'extra' | 'pickup' | 'dropoff'>().notNull(),
+    name: text('name').notNull(),
+    code: text('code').notNull(),
+    unitCents: integer('unit_cents').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+    /** The local day it happens: arrival for a pickup, departure for a drop-off. */
+    date: date('date').notNull(),
+    time: text('time'),
+    address: text('address'),
+    notes: text('notes'),
+    status: text('status').$type<'scheduled' | 'on_way' | 'done' | 'cancelled'>().notNull().default('scheduled'),
+    doneBy: text('done_by'),
+    doneAt: ts('done_at'),
+    createdBy: text('created_by').notNull(),
+    createdAt: created(),
+  },
+  (t) => [index('booking_add_ons_booking').on(t.bookingId), index('booking_add_ons_day').on(t.businessId, t.date)],
+);
 
 export const inventoryItems = pgTable('inventory_items', {
   id: id(),
@@ -893,6 +941,7 @@ export const schema = {
   visitNotes,
   careTasks,
   addOns,
+  bookingAddOns,
   inventoryItems,
   packages,
   creditGrants,

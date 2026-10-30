@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { dateKeyLabel, money, todayKey, type Booking } from '@dawgs/client';
-import { Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Toggle, useLoad } from '@dawgs/ui';
+import { dateKeyLabel, money, todayKey, type AddOn, type AddOnRequest, type Booking, type BookingAddOn } from '@dawgs/client';
+import { AddOnPicker, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
 import { attempt, confirm, say } from '../../lib/alert';
 import { useMe } from '../../lib/me';
@@ -34,6 +34,9 @@ export default function Book() {
   const [suite, setSuite] = useState(false);
   const [play, setPlay] = useState(true);
   const [pickup, setPickup] = useState<string | null>('17:00');
+  const [extras, setExtras] = useState<AddOnRequest[]>([]);
+  const [adding, setAdding] = useState<Booking | null>(null);
+  const menu = useLoad(() => api.get<{ addOns: AddOn[]; address: string | null }>('/me/add-ons'), []);
   const valid = (k: string) => /^\d{4}-\d{2}-\d{2}$/.test(k);
   const avail = useLoad<Avail | null>(
     () =>
@@ -57,8 +60,10 @@ export default function Book() {
       service === 'daycare'
         ? { dogId: dog.id, service, plan, date, pickupTime: pickup }
         : { dogId: dog.id, service, arrive, depart, kennelId: kennel?.id ?? null, play };
-    const r = await attempt(() => api.post<Booking>('/me/bookings', body));
+    const chosen = normalizeAddOns(extras).filter((x) => menu.data?.addOns.find((a) => a.id === x.addOnId)?.services.includes(service));
+    const r = await attempt(() => api.post<Booking>('/me/bookings', { ...body, addOns: chosen }));
     if (!r) return;
+    setExtras([]);
     say(r.status === 'waitlist' ? "You're on the waitlist" : 'Request sent', r.status === 'waitlist' ? "We'll let you know if a spot opens." : 'The daycare will confirm it shortly.');
     void list.reload();
   }
@@ -107,6 +112,12 @@ export default function Book() {
               ) : null}
             </>
           )}
+          {menu.data?.addOns.some((a) => a.services.includes(service)) ? (
+            <>
+              <P bold>Extras and transport</P>
+              <AddOnPicker options={menu.data.addOns} service={service} value={extras} onChange={setExtras} defaultAddress={menu.data.address} />
+            </>
+          ) : null}
           <Button variant="primary" title={service === 'daycare' && avail.data?.available === false ? 'Join the waitlist' : 'Request booking'} disabled={!dog?.canEnter || (service === 'boarding' && !kennel)} onPress={book} />
         </Card>
       ) : null}
@@ -122,11 +133,65 @@ export default function Book() {
             </View>
             <Chip {...STATUS[b.status]!} />
           </Row>
+          {b.addOns?.map((a) => (
+            <Row key={a.id} between>
+              <View style={{ flex: 1 }}>
+                <P small>{`${a.name}${a.quantity > 1 ? ` × ${a.quantity}` : ''}${a.time ? ` · ${a.time}` : ''}${a.kind !== 'extra' ? ` · ${dateKeyLabel(a.date)}` : ''}`}</P>
+                {a.address ? <P small muted>{a.address}</P> : null}
+              </View>
+              {ADDON_STATUS(a) ? <Chip text={ADDON_STATUS(a)!} tone={a.status === 'on_way' ? 'info' : 'ok'} /> : null}
+              {a.status === 'scheduled' && ['requested', 'confirmed', 'waitlist'].includes(b.status) ? (
+                <Button small variant="ghost" title="Remove" onPress={async () => (await confirm(`Remove ${a.name}?`, '')) && (await attempt(() => api.del(`/me/booking-add-ons/${a.id}`))) && void list.reload()} />
+              ) : null}
+            </Row>
+          ))}
           {['requested', 'confirmed', 'waitlist'].includes(b.status) ? (
-            <Button small variant="ghost" title="Cancel" onPress={async () => (await confirm('Cancel this booking?', '')) && (await attempt(() => api.post(`/me/bookings/${b.id}/cancel`, {}))) && void list.reload()} />
+            <Row wrap>
+              {menu.data?.addOns.some((a) => a.services.includes(b.service)) ? <Button small title="Add extras" onPress={() => setAdding(b)} /> : null}
+              <Button small variant="ghost" title="Cancel" onPress={async () => (await confirm('Cancel this booking?', '')) && (await attempt(() => api.post(`/me/bookings/${b.id}/cancel`, {}))) && void list.reload()} />
+            </Row>
           ) : null}
         </Card>
       ))}
+      {adding && menu.data ? (
+        <AddExtrasSheet
+          booking={adding}
+          menu={menu.data.addOns.filter((a) => a.kind === 'extra' || !(adding.addOns ?? []).some((x) => x.kind === a.kind))}
+          address={menu.data.address}
+          onClose={() => setAdding(null)}
+          onDone={() => {
+            setAdding(null);
+            void list.reload();
+          }}
+        />
+      ) : null}
     </Screen>
+  );
+}
+
+function ADDON_STATUS(a: BookingAddOn) {
+  if (a.status === 'on_way') return a.kind === 'pickup' ? 'Driver on the way' : 'On the way home';
+  if (a.status === 'done') return a.kind === 'pickup' ? 'Picked up' : a.kind === 'dropoff' ? 'Home' : 'Done';
+  return null;
+}
+
+/** Add extras to a booking already made. */
+function AddExtrasSheet({ booking, menu, address, onClose, onDone }: { booking: Booking; menu: AddOn[]; address: string | null; onClose: () => void; onDone: () => void }) {
+  const [extras, setExtras] = useState<AddOnRequest[]>([]);
+  return (
+    <Sheet visible onClose={onClose} title="Add extras">
+      <AddOnPicker options={menu} service={booking.service} value={extras} onChange={setExtras} defaultAddress={address} />
+      <Button
+        variant="primary"
+        title="Add to booking"
+        disabled={!extras.length}
+        onPress={async () => {
+          for (const x of normalizeAddOns(extras)) {
+            if (!(await attempt(() => api.post(`/me/bookings/${booking.id}/add-ons`, x)))) return;
+          }
+          onDone();
+        }}
+      />
+    </Sheet>
   );
 }

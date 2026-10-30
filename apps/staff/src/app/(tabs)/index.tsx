@@ -37,6 +37,8 @@ export default function BoardScreen() {
   const [walkIn, setWalkIn] = useState(false);
   const [moving, setMoving] = useState<{ visitId: string; name: string } | null>(null);
   const b = board.data;
+  const runs = useLoad(() => api.get<{ transport: { status: string }[]; services: { status: string }[] }>('/run-sheet'), [], 60_000);
+  const runsLeft = runs.data ? [...runs.data.transport, ...runs.data.services].filter((x) => x.status !== 'done').length : 0;
 
   async function checkIn(args: Record<string, unknown>) {
     const r = await attempt(() => api.post('/visits', args));
@@ -56,6 +58,14 @@ export default function BoardScreen() {
         <Stat label="Still to arrive" value={String(b?.expected.length ?? '–')} />
         <Stat label="Care tasks due" value={String(tasksDue.length)} tone={tasksDue.length ? 'warn' : undefined} />
       </Row>
+      {runsLeft ? (
+        <Card onPress={() => router.push('/run-sheet')}>
+          <Row between>
+            <P bold>{`${runsLeft} still to do on today's run sheet`}</P>
+            <P small muted>Run sheet ›</P>
+          </Row>
+        </Card>
+      ) : null}
       <Row between wrap>
         <Segmented
           value={view}

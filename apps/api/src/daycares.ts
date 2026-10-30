@@ -85,10 +85,13 @@ export async function createDaycare(
     ...[1, 2, 3, 4, 5].map((n) => ({ businessId, name: `Run ${n}`, type: 'run' as const, sort: 10 + n })),
   ]);
   await db.insert(addOns).values([
-    { businessId, code: 'bath', name: 'Exit bath', priceCents: 2500 },
-    { businessId, code: 'nails', name: 'Nail trim', priceCents: 1500 },
-    { businessId, code: 'walk', name: 'One-on-one walk', priceCents: 1000 },
-    { businessId, code: 'pupcup', name: 'Pup cup', priceCents: 400 },
+    { businessId, code: 'bath', name: 'Exit bath', category: 'Grooming', priceCents: 2500, durationMinutes: 30, description: 'Bath and brush before going home.', sort: 1 },
+    { businessId, code: 'nails', name: 'Nail trim', category: 'Grooming', priceCents: 1500, durationMinutes: 15, sort: 2 },
+    { businessId, code: 'walk', name: 'One-on-one walk', category: 'Extras', priceCents: 1000, durationMinutes: 20, sort: 3 },
+    { businessId, code: 'pupcup', name: 'Pup cup', category: 'Extras', priceCents: 400, sort: 4 },
+    { businessId, code: 'meds', name: 'Medication', category: 'Care', priceCents: 300, pricing: 'per_day' as const, services: ['boarding' as const], description: 'We give the meds you pack, every day of the stay.', sort: 5 },
+    { businessId, code: 'pickup', name: 'Pickup from home', kind: 'pickup' as const, category: 'Transport', priceCents: 1500, needsTime: true, dailyLimit: 6, description: 'Within 10 miles. We text when we are on the way.', sort: 10 },
+    { businessId, code: 'dropoff', name: 'Drop-off at home', kind: 'dropoff' as const, category: 'Transport', priceCents: 1500, needsTime: true, dailyLimit: 6, description: 'Within 10 miles.', sort: 11 },
   ]);
   await db.insert(walkTypes).values([
     { businessId, name: 'Park loop, 20 min', minutes: 20, priceCents: 1500 },

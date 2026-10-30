@@ -75,6 +75,12 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   email and stage change is a `lead_activities` row. `won` only via convert
   (creates the owner and dog). Texts to leads honour STOP by reading inbound
   `sms_messages`; replies from a lead's number land on its timeline.
+- **Add-ons:** `addons.ts`. Managers define them (any name, flat or per-day
+  price, category, services, owner-bookable, daily limit); `pickup`/`dropoff`
+  kinds are transport with a time and address. Booked ones are
+  `booking_add_ons` rows (name and price copied), validated BEFORE the booking
+  is written, billed automatically at check-out, and listed on the run sheet,
+  where "on the way"/"done" push to the owner.
 - **Pickup:** `authorized_people` per owner; a co-owner with an email who signs
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.

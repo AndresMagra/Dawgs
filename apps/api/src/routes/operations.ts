@@ -25,6 +25,7 @@ import {
 } from '../ops.js';
 import { dogSummaries } from '../people.js';
 import { notifyPickup } from '../authorized.js';
+import { addOnRequestShape, addOnsForBookings, addToBooking, cancelBookingAddOn, runSheet, setAddOnStatus } from '../addons.js';
 
 export const bookingShape = z.discriminatedUnion('service', [
   z.object({
@@ -34,6 +35,7 @@ export const bookingShape = z.discriminatedUnion('service', [
     date: dateKey,
     pickupTime: hhmm.nullable().optional(),
     notes: z.string().nullable().optional(),
+    addOns: z.array(addOnRequestShape).max(10).optional(),
   }),
   z.object({
     dogId: uuid,
@@ -44,6 +46,7 @@ export const bookingShape = z.discriminatedUnion('service', [
     kennelType: z.enum(['suite', 'run']).nullable().optional(),
     play: z.boolean().optional(),
     notes: z.string().nullable().optional(),
+    addOns: z.array(addOnRequestShape).max(10).optional(),
   }),
 ]);
 
@@ -68,7 +71,8 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     const rows = await listBookings(ctx.db, a.businessId, from, to);
     const summaries = await dogSummaries(ctx.db, a.businessId, [...new Set(rows.map((r) => r.dogId))], ctx.now());
     const byId = new Map(summaries.map((s) => [s.id, s]));
-    return { from, to, bookings: rows.map((r) => ({ ...r, dog: byId.get(r.dogId) })) };
+    const extras = await addOnsForBookings(ctx, rows.map((r) => r.id));
+    return { from, to, bookings: rows.map((r) => ({ ...r, dog: byId.get(r.dogId), addOns: extras.get(r.id) ?? [] })) };
   });
 
   app.post('/bookings', async (req) => {
@@ -81,6 +85,28 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
     const { id } = req.params as { id: string };
     const { status } = parse(z.object({ status: z.enum(['confirmed', 'declined', 'cancelled', 'no_show']) }), req.body);
     return setBookingStatus(ctx, { businessId: a.businessId, bookingId: id, status, actor: a.name });
+  });
+
+  app.post('/bookings/:id/add-ons', async (req) => {
+    const a = requireStaff(req);
+    const { id } = req.params as { id: string };
+    return addToBooking(ctx, { businessId: a.businessId, bookingId: id, request: parse(addOnRequestShape, req.body), source: 'staff', actor: a.name });
+  });
+  app.delete('/booking-add-ons/:id', async (req) => {
+    const a = requireStaff(req);
+    return cancelBookingAddOn(ctx, { businessId: a.businessId, id: (req.params as { id: string }).id, actor: a.name });
+  });
+  app.post('/booking-add-ons/:id/status', async (req) => {
+    const a = requireStaff(req);
+    const { status } = parse(z.object({ status: z.enum(['scheduled', 'on_way', 'done']) }), req.body);
+    return setAddOnStatus(ctx, { businessId: a.businessId, id: (req.params as { id: string }).id, status, actor: a.name });
+  });
+  /** Today's pickups, drop-offs and booked extras. */
+  app.get('/run-sheet', async (req) => {
+    const a = requireStaff(req);
+    const b = await loadBusiness(ctx.db, a.businessId);
+    const { date } = parse(z.object({ date: dateKey.optional() }), req.query);
+    return runSheet(ctx, a.businessId, date ?? localDateKey(ctx.now(), b.timezone));
   });
 
   app.get('/board', async (req) => {

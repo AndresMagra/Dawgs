@@ -102,7 +102,7 @@ export async function dogSummaries(db: Database, businessId: string, dogIds: rea
     ];
     return {
       ...dog,
-      owner: { id: owner.id, name: owner.name, phone: owner.phone, email: owner.email },
+      owner: { id: owner.id, name: owner.name, phone: owner.phone, email: owner.email, address: owner.address },
       vaccines: status,
       vaccineState: worstVaccineState(status),
       vaccinesAwaitingReview: mine.filter((s) => !s.verifiedBy).length,

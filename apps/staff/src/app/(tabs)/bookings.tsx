@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
-import { BOOKING_STATUS, dateKeyLabel, money, todayKey, type Booking, type Dog } from '@dawgs/client';
-import { Avatar, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, useLoad } from '@dawgs/ui';
+import { BOOKING_STATUS, dateKeyLabel, money, todayKey, type AddOn, type AddOnRequest, type Booking, type Dog } from '@dawgs/client';
+import { AddOnPicker, Avatar, Button, Card, Chip, Empty, Field, H2, Notice, P, Pick, Row, Screen, Segmented, Sheet, Toggle, normalizeAddOns, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
 import { attempt } from '../../lib/alert';
 import { DogPicker } from '../../lib/DogPicker';
@@ -55,6 +55,9 @@ export default function BookingsScreen() {
                     {b.estimateCents ? ` · est. ${money(b.estimateCents)}` : ''}
                     {b.source === 'owner' ? ' · booked in app' : ''}
                   </P>
+                  {b.addOns?.length ? (
+                    <P small>{`+ ${b.addOns.map((a) => `${a.name}${a.time ? ` ${a.time}` : ''}${a.quantity > 1 ? ` × ${a.quantity}` : ''}`).join(', ')}`}</P>
+                  ) : null}
                 </View>
                 <Chip text={BOOKING_STATUS[b.status] ?? b.status} tone={b.status === 'requested' ? 'warn' : b.status === 'waitlist' ? 'info' : b.status === 'confirmed' ? 'ok' : ''} />
               </Row>
@@ -91,6 +94,8 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
   const [kennelId, setKennelId] = useState<string | null>(null);
   const [play, setPlay] = useState(false);
   const [pickup, setPickup] = useState<string | null>('17:00');
+  const [extras, setExtras] = useState<AddOnRequest[]>([]);
+  const menu = useLoad(() => api.get<{ addOns: AddOn[] }>('/settings').then((s) => s.addOns), []);
   type Avail = { freeKennels?: { id: string; name: string; type: string; estimateCents: number }[]; spotsLeft?: number; capacity?: number };
   const avail = useLoad<Avail>(
     () =>
@@ -105,8 +110,10 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
     if (!dog) return;
     const body =
       service === 'daycare' ? { dogId: dog.id, service, plan, date, pickupTime: pickup } : { dogId: dog.id, service, arrive, depart, kennelId, play };
-    if (await attempt(() => api.post('/bookings', body))) {
+    const chosen = normalizeAddOns(extras).filter((x) => menu.data?.find((a) => a.id === x.addOnId)?.services.includes(service));
+    if (await attempt(() => api.post('/bookings', { ...body, addOns: chosen }))) {
       if (!presetDog) setDog(null);
+      setExtras([]);
       onDone();
     }
   }
@@ -148,6 +155,12 @@ export function NewBookingSheet({ open, tz, onClose, onDone, presetDog }: { open
               <Toggle label="Daycare play every day" value={play} onChange={setPlay} />
             </>
           )}
+          {menu.data?.length ? (
+            <>
+              <H2>Add-ons</H2>
+              <AddOnPicker options={menu.data} service={service} value={extras} onChange={setExtras} defaultAddress={dog.owner.address ?? null} />
+            </>
+          ) : null}
           <Button variant="primary" title="Book it" disabled={!dog.canEnter || (service === 'boarding' && !kennelId)} onPress={save} />
         </>
       )}

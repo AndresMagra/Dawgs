@@ -27,6 +27,7 @@ import {
 } from '@dawgs/core';
 import {
   addOns,
+  bookingAddOns,
   bookings,
   businesses,
   careTasks,
@@ -44,6 +45,7 @@ import { spendCredits, walletOf } from './credits.js';
 import { createInvoice, payInvoice, type PayOutcome } from './payments.js';
 import type { PayInput } from './util.js';
 import { audit } from './audit.js';
+import { addOnsForBookings, insertPlanned, planAddOns, type AddOnRequest } from './addons.js';
 
 const ACTIVE: BookingStatus[] = ['requested', 'confirmed', 'checked_in'];
 
@@ -126,7 +128,7 @@ async function assertDogMayCome(db: Database, businessId: string, dogId: string,
 }
 
 export type BookingInput =
-  | { dogId: string; service: 'daycare'; plan: 'half' | 'full' | 'hourly'; date: string; pickupTime?: string | null; notes?: string | null }
+  | { dogId: string; service: 'daycare'; plan: 'half' | 'full' | 'hourly'; date: string; pickupTime?: string | null; notes?: string | null; addOns?: AddOnRequest[] }
   | {
       dogId: string;
       service: 'boarding';
@@ -136,6 +138,7 @@ export type BookingInput =
       kennelType?: 'suite' | 'run' | null;
       play?: boolean;
       notes?: string | null;
+      addOns?: AddOnRequest[];
     };
 
 export async function createBooking(
@@ -157,6 +160,7 @@ export async function createBooking(
     const full = (await daycareCount(ctx.db, businessId, input.date)) >= b.daycareCapacity;
     if (full && source === 'owner') throw new ConflictError('that day is full; try another day or ask to be waitlisted');
     const status: BookingStatus = full ? 'waitlist' : source === 'owner' ? 'requested' : 'confirmed';
+    const extras = await planAddOns(ctx, { businessId, stay: { service: 'daycare', date: input.date, arrive: null, depart: null, dogId: input.dogId }, requests: input.addOns ?? [], source, actor: args.actor });
     const [row] = await ctx.db
       .insert(bookings)
       .values({
@@ -172,8 +176,9 @@ export async function createBooking(
         estimateCents: input.plan === 'full' ? b.prices.fullDay : input.plan === 'half' ? b.prices.halfDay : null,
       })
       .returning();
+    const added = await insertPlanned(ctx, row!.id, extras);
     await audit(ctx.db, businessId, args.actor, 'booking.create', `${dog.name}: daycare ${input.date} (${status})`);
-    return row!;
+    return { ...row!, addOns: added };
   }
 
   const range = { arrive: input.arrive, depart: input.depart };
@@ -193,6 +198,7 @@ export async function createBooking(
     kennel = all.find((k) => (!input.kennelType || k.type === input.kennelType) && kennelIsFree(k.id, range, stays));
     if (!kennel) throw new ConflictError('no kennel is free for those nights');
   }
+  const extras = await planAddOns(ctx, { businessId, stay: { service: 'boarding', date: null, ...range, dogId: input.dogId }, requests: input.addOns ?? [], source, actor: args.actor });
   const [row] = await ctx.db
     .insert(bookings)
     .values({
@@ -209,8 +215,9 @@ export async function createBooking(
       estimateCents: estimateStay({ nights: nightsOf(range), kennelType: kennel.type, play: input.play ?? false, prices: b.prices }),
     })
     .returning();
+  const added = await insertPlanned(ctx, row!.id, extras);
   await audit(ctx.db, businessId, args.actor, 'booking.create', `${dog.name}: ${kennel.name} ${range.arrive} → ${range.depart}`);
-  return row!;
+  return { ...row!, addOns: added };
 }
 
 export async function setBookingStatus(
@@ -400,6 +407,17 @@ async function resolveAddOns(db: Database, businessId: string, codes: readonly s
   });
 }
 
+/** What was booked with the stay goes on the bill without anyone ticking it again. */
+async function bookedAddOns(ctx: AppContext, bookingId: string | null): Promise<AddOn[]> {
+  if (!bookingId) return [];
+  const rows = (await addOnsForBookings(ctx, [bookingId])).get(bookingId) ?? [];
+  return rows.map((r) => ({
+    code: r.code,
+    name: `${r.name}${r.quantity > 1 ? ` × ${r.quantity}` : ''}${r.time ? ` (${r.time})` : ''}`,
+    price: r.unitCents * r.quantity,
+  }));
+}
+
 export async function previewBill(ctx: AppContext, businessId: string, visitId: string, addOnCodes: readonly string[] = []) {
   const [v] = await ctx.db.select().from(visits).where(eq(visits.id, visitId));
   if (!v || v.businessId !== businessId) throw new NotFoundError('visit');
@@ -423,7 +441,7 @@ export async function previewBill(ctx: AppContext, businessId: string, visitId: 
     hours: b.hours,
     tz: b.timezone,
     wallet,
-    addOns: await resolveAddOns(ctx.db, businessId, addOnCodes),
+    addOns: [...(await bookedAddOns(ctx, v.bookingId)), ...(await resolveAddOns(ctx.db, businessId, addOnCodes))],
   });
 }
 
@@ -454,7 +472,14 @@ export async function checkOut(
       await ctx.db.update(inventoryItems).set({ onHand: sql`${inventoryItems.onHand} - 1` }).where(eq(inventoryItems.id, id));
     }
   }
-  if (v.bookingId) await ctx.db.update(bookings).set({ status: 'checked_out' }).where(eq(bookings.id, v.bookingId));
+  if (v.bookingId) {
+    await ctx.db.update(bookings).set({ status: 'checked_out' }).where(eq(bookings.id, v.bookingId));
+    // Billed now; a drop-off still waiting stays open for the driver.
+    await ctx.db
+      .update(bookingAddOns)
+      .set({ status: 'done', doneBy: args.actor, doneAt: new Date(now) })
+      .where(and(eq(bookingAddOns.bookingId, v.bookingId), eq(bookingAddOns.kind, 'extra'), eq(bookingAddOns.status, 'scheduled')));
+  }
   const lines: BillLine[] = bill.lines;
   const inv = await createInvoice(ctx.db, {
     businessId: args.businessId,

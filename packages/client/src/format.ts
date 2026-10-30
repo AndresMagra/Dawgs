@@ -83,3 +83,14 @@ export const LEAD_SOURCES = [
   { key: 'social', label: 'Social media' },
   { key: 'other', label: 'Other' },
 ] as const;
+
+/** "$15", "$3 a day", "$25 · 30 min" for an add-on on a menu. */
+export function addOnPrice(a: { priceCents: number; pricing: 'flat' | 'per_day'; durationMinutes?: number | null }) {
+  return `${money(a.priceCents)}${a.pricing === 'per_day' ? ' a day' : ''}${a.durationMinutes ? ` · ${a.durationMinutes} min` : ''}`;
+}
+
+export const ADD_ON_KINDS = [
+  { key: 'extra', label: 'Service or extra' },
+  { key: 'pickup', label: 'Pickup from home' },
+  { key: 'dropoff', label: 'Drop-off at home' },
+] as const;

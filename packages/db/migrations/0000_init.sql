@@ -3,7 +3,17 @@ CREATE TABLE "add_ons" (
 	"business_id" uuid NOT NULL,
 	"code" text NOT NULL,
 	"name" text NOT NULL,
+	"description" text,
+	"kind" text DEFAULT 'extra' NOT NULL,
+	"category" text,
 	"price_cents" integer NOT NULL,
+	"pricing" text DEFAULT 'flat' NOT NULL,
+	"duration_minutes" integer,
+	"services" jsonb DEFAULT '["daycare","boarding"]'::jsonb NOT NULL,
+	"owner_bookable" boolean DEFAULT true NOT NULL,
+	"needs_time" boolean DEFAULT false NOT NULL,
+	"daily_limit" integer,
+	"sort" integer DEFAULT 0 NOT NULL,
 	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
@@ -29,6 +39,27 @@ CREATE TABLE "authorized_people" (
 	"notes" text,
 	"active" boolean DEFAULT true NOT NULL,
 	"added_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "booking_add_ons" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"booking_id" uuid NOT NULL,
+	"add_on_id" uuid NOT NULL,
+	"kind" text NOT NULL,
+	"name" text NOT NULL,
+	"code" text NOT NULL,
+	"unit_cents" integer NOT NULL,
+	"quantity" integer DEFAULT 1 NOT NULL,
+	"date" date NOT NULL,
+	"time" text,
+	"address" text,
+	"notes" text,
+	"status" text DEFAULT 'scheduled' NOT NULL,
+	"done_by" text,
+	"done_at" timestamp with time zone,
+	"created_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -616,6 +647,9 @@ ALTER TABLE "add_ons" ADD CONSTRAINT "add_ons_business_id_businesses_id_fk" FORE
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "authorized_people" ADD CONSTRAINT "authorized_people_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "authorized_people" ADD CONSTRAINT "authorized_people_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "booking_add_ons" ADD CONSTRAINT "booking_add_ons_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "booking_add_ons" ADD CONSTRAINT "booking_add_ons_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "booking_add_ons" ADD CONSTRAINT "booking_add_ons_add_on_id_add_ons_id_fk" FOREIGN KEY ("add_on_id") REFERENCES "public"."add_ons"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_kennel_id_kennels_id_fk" FOREIGN KEY ("kennel_id") REFERENCES "public"."kennels"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -709,6 +743,8 @@ ALTER TABLE "walks" ADD CONSTRAINT "walks_walker_id_users_id_fk" FOREIGN KEY ("w
 ALTER TABLE "yards" ADD CONSTRAINT "yards_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_business_at" ON "audit_log" USING btree ("business_id","created_at");--> statement-breakpoint
 CREATE INDEX "authorized_people_owner" ON "authorized_people" USING btree ("owner_id");--> statement-breakpoint
+CREATE INDEX "booking_add_ons_booking" ON "booking_add_ons" USING btree ("booking_id");--> statement-breakpoint
+CREATE INDEX "booking_add_ons_day" ON "booking_add_ons" USING btree ("business_id","date");--> statement-breakpoint
 CREATE INDEX "bookings_date" ON "bookings" USING btree ("business_id","date");--> statement-breakpoint
 CREATE INDEX "bookings_stay" ON "bookings" USING btree ("business_id","arrive");--> statement-breakpoint
 CREATE UNIQUE INDEX "budgets_cat_month" ON "budgets" USING btree ("business_id","category","month");--> statement-breakpoint

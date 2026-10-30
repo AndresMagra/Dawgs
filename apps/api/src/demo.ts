@@ -6,7 +6,7 @@
 
 import { and, eq, isNull } from 'drizzle-orm';
 import { addLocalDays, localDateKey } from '@dawgs/core';
-import { bookings, dogs, kennels, leads, users, visits, walkTypes, yards } from '@dawgs/db';
+import { addOns, bookings, dogs, kennels, leads, users, visits, walkTypes, yards } from '@dawgs/db';
 import { buildApp } from './app.js';
 import { contextFromEnv } from './server.js';
 import { startScheduler } from './scheduler.js';
@@ -38,8 +38,26 @@ async function demoDay(ctx: AppContext, businessId: string) {
   await safe(() => checkIn(ctx, { businessId, actor, dogId: byName('Biscuit').id, service: 'daycare', plan: 'full', yardId: ys[0]?.id ?? null, pickupTime: '17:00' }));
   await safe(() => checkIn(ctx, { businessId, actor, dogId: byName('Mochi').id, service: 'daycare', plan: 'half', yardId: ys[1]?.id ?? null, pickupTime: '16:00' }));
   await safe(() => checkIn(ctx, { businessId, actor, dogId: byName('Bruno').id, service: 'boarding', kennelId: ks[0]?.id ?? null, departDate: addLocalDays(today, 2), play: true }));
-  await safe(() => createBooking(ctx, { businessId, actor, source: 'staff', input: { dogId: byName('Olive').id, service: 'daycare', plan: 'full', date: today, pickupTime: '18:00' } }));
-  await safe(() => createBooking(ctx, { businessId, actor: 'Dana (app)', source: 'owner', input: { dogId: byName('Biscuit').id, service: 'daycare', plan: 'full', date: addLocalDays(today, 1), pickupTime: '17:00' } }));
+  const extras = await ctx.db.select().from(addOns).where(eq(addOns.businessId, businessId));
+  const extra = (code: string) => extras.find((a) => a.code === code);
+  const with_ = (list: { code: string; time?: string; address?: string }[]) =>
+    list.flatMap((x) => (extra(x.code) ? [{ addOnId: extra(x.code)!.id, ...(x.time ? { time: x.time } : {}), ...(x.address ? { address: x.address } : {}) }] : []));
+  await safe(() =>
+    createBooking(ctx, {
+      businessId,
+      actor,
+      source: 'staff',
+      input: { dogId: byName('Olive').id, service: 'daycare', plan: 'full', date: today, pickupTime: '18:00', addOns: with_([{ code: 'nails' }, { code: 'dropoff', time: '18:00', address: '48 Birch Lane' }]) },
+    }),
+  );
+  await safe(() =>
+    createBooking(ctx, {
+      businessId,
+      actor: 'Dana (app)',
+      source: 'owner',
+      input: { dogId: byName('Biscuit').id, service: 'daycare', plan: 'full', date: addLocalDays(today, 1), pickupTime: '17:00', addOns: with_([{ code: 'pickup', time: '08:00', address: '7 Maple Court' }, { code: 'bath' }]) },
+    }),
+  );
   const [wt] = await ctx.db.select().from(walkTypes).where(eq(walkTypes.businessId, businessId));
   const [walker] = await ctx.db.select().from(users).where(and(eq(users.businessId, businessId), eq(users.email, 'marco@happytails.test')));
   if (wt) await safe(() => scheduleWalk(ctx, { businessId, dogId: byName('Mochi').id, walkTypeId: wt.id, scheduledAt: ctx.now() + 2 * 3_600_000, walkerId: walker?.id ?? null, actor, byOwner: false }));

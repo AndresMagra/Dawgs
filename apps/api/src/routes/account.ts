@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { ValidationError } from '@dawgs/core';
 import { addOns, businesses, kennels, pushTokens, sessions, users, walkTypes, yards } from '@dawgs/db';
 import type { AppContext } from '../context.js';
+import { addOnSettingsShape, slugCode } from '../addons.js';
 import {
   auth,
   checkPassword,
@@ -166,7 +167,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
       },
       yards: by(await ctx.db.select().from(yards).where(eq(yards.businessId, a.businessId)).orderBy(asc(yards.sort))),
       kennels: await ctx.db.select().from(kennels).where(eq(kennels.businessId, a.businessId)).orderBy(asc(kennels.sort)),
-      addOns: await ctx.db.select().from(addOns).where(eq(addOns.businessId, a.businessId)),
+      addOns: await ctx.db.select().from(addOns).where(eq(addOns.businessId, a.businessId)).orderBy(asc(addOns.sort), asc(addOns.name)),
       walkTypes: await ctx.db.select().from(walkTypes).where(eq(walkTypes.businessId, a.businessId)),
     };
   });
@@ -231,7 +232,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
     {
       path: 'add-ons',
       table: addOns,
-      shape: z.object({ code: z.string().min(1), name: z.string().min(1), priceCents: cents, active: z.boolean().optional() }),
+      shape: addOnSettingsShape,
     },
     {
       path: 'walk-types',
@@ -249,7 +250,9 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
     const table = l.table as typeof yards;
     app.post(`/settings/${l.path}`, async (req) => {
       const a = requireManager(req);
-      const body = parse(l.shape, req.body);
+      const parsed = parse(l.shape, req.body);
+      // An add-on's code is only an internal handle; derive it from the name when not given.
+      const body = l.path === 'add-ons' ? { code: slugCode((parsed as { name: string }).name), ...parsed } : parsed;
       const [row] = await ctx.db
         .insert(table)
         .values({ ...(body as object), businessId: a.businessId } as typeof yards.$inferInsert)
