@@ -21,6 +21,7 @@ import {
 import type { AppContext } from '../context.js';
 import { requireManager, requireStaff, sameBusiness } from '../auth.js';
 import { dateKey, parse, uuid, walletShape } from '../util.js';
+import { peopleFor } from '../authorized.js';
 import { dogSummaries, lastVisits, ownerCards } from '../people.js';
 import { ensureStripeCustomer, removeCard, saveCard, setDefaultCard } from '../payments.js';
 import { grantCredits, spendCredits, walletOf } from '../credits.js';
@@ -110,6 +111,7 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
       cards: await ownerCards(ctx.db, id),
       invoices: await ctx.db.select().from(invoices).where(eq(invoices.ownerId, id)).orderBy(desc(invoices.createdAt)).limit(50),
       memberships: await ctx.db.select().from(memberships).where(eq(memberships.ownerId, id)),
+      people: await peopleFor(ctx, id),
       texts: await ctx.db.select().from(smsMessages).where(eq(smsMessages.ownerId, id)).orderBy(desc(smsMessages.createdAt)).limit(50),
       waivers: await ctx.db
         .select({

@@ -12,7 +12,7 @@
  * recorded at most once however many times its webhook arrives.
  */
 
-import { and, desc, eq, max, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, max, sql } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { NotFoundError, PaymentError, ValidationError, type BillLine, formatMoney } from '@dawgs/core';
 import {
@@ -298,6 +298,8 @@ async function linkByToken(ctx: AppContext, token: string) {
 /** What the public pay page shows, plus a payment intent to confirm with Stripe's UI. */
 export async function openPayLink(ctx: AppContext, token: string) {
   const { inv, biz } = await linkByToken(ctx, token);
+  // The first open is the desk's "viewed" mark on the invoice.
+  if (!inv.viewedAt) await ctx.db.update(invoices).set({ viewedAt: new Date(ctx.now()) }).where(and(eq(invoices.id, inv.id), isNull(invoices.viewedAt)));
   const due = inv.totalCents - (await paidSoFar(ctx.db, inv.id));
   const gw = await ctx.gatewayFor(inv.businessId);
   const base = {
@@ -309,6 +311,8 @@ export async function openPayLink(ctx: AppContext, token: string) {
     totalCents: inv.totalCents,
     dueCents: Math.max(0, due),
     status: inv.status,
+    dueDate: inv.dueDate,
+    memo: inv.memo,
     mode: gw.mode,
     publishableKey: gw.publishableKey,
     stripeAccount: biz.stripeAccountId,

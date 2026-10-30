@@ -29,6 +29,7 @@ import {
   waivers,
 } from '@dawgs/db';
 import type { AppContext } from '../context.js';
+import { peopleFor } from '../authorized.js';
 import { requireOwner } from '../auth.js';
 import { dateKey, parse, payShape, uuid } from '../util.js';
 import { dogSummaries, ownerCards } from '../people.js';
@@ -86,6 +87,7 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
       owner: o,
       dogs: await dogSummaries(ctx.db, a.businessId, ids, ctx.now()),
       cards: await ownerCards(ctx.db, a.ownerId),
+      people: await peopleFor(ctx, a.ownerId),
       forms,
       formsToSign: forms.filter((f) => f.required && f.needsSignature).length,
     };

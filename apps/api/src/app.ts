@@ -20,6 +20,7 @@ import { registerWalkRoutes } from './routes/walks.js';
 import { registerTeamRoutes } from './routes/team.js';
 import { registerManageRoutes } from './routes/manage.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerPickupRoutes } from './routes/pickup.js';
 
 const STATUS: Record<string, number> = {
   VALIDATION: 400,
@@ -72,5 +73,6 @@ export async function buildApp(ctx: AppContext, options: { logger?: boolean; cor
   registerTeamRoutes(app, ctx);
   registerManageRoutes(app, ctx);
   registerMeRoutes(app, ctx);
+  registerPickupRoutes(app, ctx);
   return app;
 }

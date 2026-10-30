@@ -4,6 +4,7 @@ import { MIGRATIONS_DIR, type AppContext } from '../src/context.js';
 import { SimulatedGateway } from '../src/gateway.js';
 import { ConsoleSms } from '../src/sms.js';
 import { MemoryPush } from '../src/push.js';
+import { ConsoleMail } from '../src/mail.js';
 import { tenantProviders } from '../src/tenants.js';
 import { seedDemo, DEMO_PASSWORD } from '../src/seed.js';
 
@@ -14,12 +15,14 @@ export async function makeApp(startAt = Date.parse('2026-11-04T13:00:00Z')) {
   const sim = new SimulatedGateway();
   const sms = new ConsoleSms();
   const push = new MemoryPush();
+  const mail = new ConsoleMail();
   const ctx: AppContext = {
     db: database.db,
     ...tenantProviders({ db: database.db, connect: null, simulator: sim, consoleSms: sms, secret: 'test-secret-test-secret-test-secret' }),
     connect: null,
     secret: 'test-secret-test-secret-test-secret',
     push,
+    mail,
     now: () => clock.t,
     publicUrl: 'https://app.dawgs.test',
     ownerSignupOpen: true,
@@ -42,5 +45,5 @@ export async function makeApp(startAt = Date.parse('2026-11-04T13:00:00Z')) {
     if (r.status !== 200) throw new Error(`login ${email}: ${JSON.stringify(r.body)}`);
     return r.body.token;
   }
-  return { app, ctx, clock, sim, sms, push, business, call, login, close: () => database.close() };
+  return { app, ctx, clock, sim, sms, push, mail, business, call, login, close: () => database.close() };
 }

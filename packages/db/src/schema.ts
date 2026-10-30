@@ -48,6 +48,8 @@ export const businesses = pgTable('businesses', {
   /** Days without a visit before a regular shows on the manager's reminder list. */
   inactiveAfterDays: integer('inactive_after_days').notNull().default(21),
   pickupTextsEnabled: boolean('pickup_texts_enabled').notNull().default(true),
+  /** Email and text owners when an invoice with a due date goes unpaid. */
+  invoiceRemindersEnabled: boolean('invoice_reminders_enabled').notNull().default(true),
   /** Short name used in the customer app's address and sign-up link. */
   slug: text('slug').notNull().unique(),
   logoUrl: text('logo_url'),
@@ -126,6 +128,34 @@ export const owners = pgTable(
     createdAt: created(),
   },
   (t) => [index('owners_business').on(t.businessId)],
+);
+
+/**
+ * People an owner allows to collect their dogs: a partner, a dog walker, a
+ * grandparent. A co-owner with an email can also sign in to the customer app
+ * on the same account. Staff check the list at pickup and record who came.
+ */
+export const authorizedPeople = pgTable(
+  'authorized_people',
+  {
+    id: id(),
+    businessId: biz(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => owners.id),
+    name: text('name').notNull(),
+    relation: text('relation'),
+    phone: text('phone'),
+    email: text('email'),
+    photoUrl: text('photo_url'),
+    /** May sign in to the customer app and manage the account like the owner. */
+    coOwner: boolean('co_owner').notNull().default(false),
+    notes: text('notes'),
+    active: boolean('active').notNull().default(true),
+    addedBy: text('added_by').notNull(),
+    createdAt: created(),
+  },
+  (t) => [index('authorized_people_owner').on(t.ownerId)],
 );
 
 export const paymentMethods = pgTable('payment_methods', {
@@ -272,6 +302,8 @@ export const visits = pgTable(
     pickupTextSentAt: ts('pickup_text_sent_at'),
     checkedOutAt: ts('checked_out_at'),
     checkedOutBy: text('checked_out_by'),
+    /** Who collected the dog: the owner or one of their authorized people, by name. */
+    pickedUpBy: text('picked_up_by'),
     invoiceId: uuid('invoice_id'),
   },
   (t) => [index('visits_open').on(t.businessId, t.checkedOutAt)],
@@ -401,7 +433,7 @@ export const invoices = pgTable(
     dogId: uuid('dog_id').references(() => dogs.id),
     visitId: uuid('visit_id'),
     category: text('category')
-      .$type<'daycare' | 'boarding' | 'packages' | 'walks' | 'training' | 'retail'>()
+      .$type<'daycare' | 'boarding' | 'packages' | 'walks' | 'training' | 'retail' | 'other'>()
       .notNull(),
     lines: jsonb('lines').$type<BillLine[]>().notNull(),
     totalCents: integer('total_cents').notNull(),
@@ -409,10 +441,38 @@ export const invoices = pgTable(
     /** What to hand over once paid (credits for a pack, a membership month). Done once. */
     fulfilment: jsonb('fulfilment').$type<Fulfilment | null>(),
     fulfilledAt: ts('fulfilled_at'),
+    /** Local day the bill is due; null means due on receipt with no reminders. */
+    dueDate: date('due_date'),
+    memo: text('memo'),
+    /** First time it was emailed or texted, and first time the pay page was opened. */
+    sentAt: ts('sent_at'),
+    viewedAt: ts('viewed_at'),
+    remindersSent: integer('reminders_sent').notNull().default(0),
+    lastReminderAt: ts('last_reminder_at'),
     paidAt: ts('paid_at'),
     createdAt: created(),
   },
   (t) => [uniqueIndex('invoices_number').on(t.businessId, t.number)],
+);
+
+/** Each time an invoice went out, by email or text, and whether it got there. */
+export const invoiceSends = pgTable(
+  'invoice_sends',
+  {
+    id: id(),
+    businessId: biz(),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    channel: text('channel').$type<'email' | 'sms'>().notNull(),
+    kind: text('kind').$type<'invoice' | 'reminder' | 'receipt'>().notNull(),
+    to: text('to').notNull(),
+    status: text('status').$type<'sent' | 'failed' | 'skipped'>().notNull(),
+    error: text('error'),
+    sentBy: text('sent_by').notNull(),
+    createdAt: created(),
+  },
+  (t) => [index('invoice_sends_invoice').on(t.invoiceId)],
 );
 
 export const payments = pgTable('payments', {
@@ -533,7 +593,7 @@ export const smsMessages = pgTable('sms_messages', {
   direction: text('direction').$type<'out' | 'in'>().notNull(),
   to: text('to').notNull(),
   body: text('body').notNull(),
-  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'walk_report' | 'reminder' | 'inbound'>().notNull(),
+  kind: text('kind').$type<'pickup' | 'manual' | 'payment_link' | 'invoice' | 'walk_report' | 'reminder' | 'inbound'>().notNull(),
   status: text('status').$type<'queued' | 'sent' | 'failed' | 'received' | 'skipped'>().notNull(),
   providerId: text('provider_id'),
   error: text('error'),
@@ -773,6 +833,7 @@ export const schema = {
   sessions,
   pushTokens,
   owners,
+  authorizedPeople,
   paymentMethods,
   dogs,
   vaccines,
@@ -790,6 +851,7 @@ export const schema = {
   invoices,
   payments,
   paymentLinks,
+  invoiceSends,
   walkTypes,
   walks,
   walkPoints,

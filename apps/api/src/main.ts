@@ -19,6 +19,10 @@ if ((env.DAWGS_SECRET ?? '').length < 32) {
   console.error('Refusing to start: DAWGS_SECRET must be at least 32 characters');
   process.exit(1);
 }
+if (!env.RESEND_API_KEY || !env.DAWGS_MAIL_FROM) {
+  // Not fatal: everything works, but invoices go out by text only.
+  console.warn('RESEND_API_KEY / DAWGS_MAIL_FROM not set: emails are logged, not sent');
+}
 const ctx = await contextFromEnv(env);
 const app = await buildApp(ctx, { logger: true, corsOrigins: (env.DAWGS_CORS_ORIGINS ?? env.DAWGS_PUBLIC_URL!).split(',') });
 startScheduler(ctx);

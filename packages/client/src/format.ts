@@ -56,3 +56,12 @@ export const BOOKING_STATUS: Record<string, string> = {
   declined: 'Declined',
   no_show: 'No-show',
 };
+
+/** Where an open invoice stands, in the words the desk uses. */
+export function invoiceStage(i: { status: string; sentAt: string | null; viewedAt: string | null; dueDate: string | null }, today: string) {
+  if (i.status !== 'open') return { text: i.status.replace('_', ' '), tone: i.status === 'paid' ? ('ok' as const) : ('' as const) };
+  if (i.dueDate && i.dueDate < today) return { text: 'Overdue', tone: 'bad' as const };
+  if (i.viewedAt) return { text: 'Viewed', tone: 'info' as const };
+  if (i.sentAt) return { text: 'Sent', tone: 'warn' as const };
+  return { text: 'Not sent', tone: 'warn' as const };
+}

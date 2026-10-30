@@ -16,6 +16,22 @@ CREATE TABLE "audit_log" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "authorized_people" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"owner_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"relation" text,
+	"phone" text,
+	"email" text,
+	"photo_url" text,
+	"co_owner" boolean DEFAULT false NOT NULL,
+	"notes" text,
+	"active" boolean DEFAULT true NOT NULL,
+	"added_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "bookings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"business_id" uuid NOT NULL,
@@ -56,6 +72,7 @@ CREATE TABLE "businesses" (
 	"required_vaccines" jsonb NOT NULL,
 	"inactive_after_days" integer DEFAULT 21 NOT NULL,
 	"pickup_texts_enabled" boolean DEFAULT true NOT NULL,
+	"invoice_reminders_enabled" boolean DEFAULT true NOT NULL,
 	"slug" text NOT NULL,
 	"logo_url" text,
 	"brand_color" text DEFAULT '#2f6f4f' NOT NULL,
@@ -163,6 +180,19 @@ CREATE TABLE "inventory_items" (
 	"reorder_at" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "invoice_sends" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"business_id" uuid NOT NULL,
+	"invoice_id" uuid NOT NULL,
+	"channel" text NOT NULL,
+	"kind" text NOT NULL,
+	"to" text NOT NULL,
+	"status" text NOT NULL,
+	"error" text,
+	"sent_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "invoices" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"business_id" uuid NOT NULL,
@@ -176,6 +206,12 @@ CREATE TABLE "invoices" (
 	"status" text NOT NULL,
 	"fulfilment" jsonb,
 	"fulfilled_at" timestamp with time zone,
+	"due_date" date,
+	"memo" text,
+	"sent_at" timestamp with time zone,
+	"viewed_at" timestamp with time zone,
+	"reminders_sent" integer DEFAULT 0 NOT NULL,
+	"last_reminder_at" timestamp with time zone,
 	"paid_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -462,6 +498,7 @@ CREATE TABLE "visits" (
 	"pickup_text_sent_at" timestamp with time zone,
 	"checked_out_at" timestamp with time zone,
 	"checked_out_by" text,
+	"picked_up_by" text,
 	"invoice_id" uuid
 );
 --> statement-breakpoint
@@ -546,6 +583,8 @@ CREATE TABLE "yards" (
 --> statement-breakpoint
 ALTER TABLE "add_ons" ADD CONSTRAINT "add_ons_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "authorized_people" ADD CONSTRAINT "authorized_people_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "authorized_people" ADD CONSTRAINT "authorized_people_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_kennel_id_kennels_id_fk" FOREIGN KEY ("kennel_id") REFERENCES "public"."kennels"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -565,6 +604,8 @@ ALTER TABLE "dogs" ADD CONSTRAINT "dogs_business_id_businesses_id_fk" FOREIGN KE
 ALTER TABLE "dogs" ADD CONSTRAINT "dogs_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "expenses" ADD CONSTRAINT "expenses_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "inventory_items" ADD CONSTRAINT "inventory_items_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "invoice_sends" ADD CONSTRAINT "invoice_sends_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "invoice_sends" ADD CONSTRAINT "invoice_sends_invoice_id_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_dog_id_dogs_id_fk" FOREIGN KEY ("dog_id") REFERENCES "public"."dogs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -631,6 +672,7 @@ ALTER TABLE "walks" ADD CONSTRAINT "walks_walk_type_id_walk_types_id_fk" FOREIGN
 ALTER TABLE "walks" ADD CONSTRAINT "walks_walker_id_users_id_fk" FOREIGN KEY ("walker_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "yards" ADD CONSTRAINT "yards_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_business_at" ON "audit_log" USING btree ("business_id","created_at");--> statement-breakpoint
+CREATE INDEX "authorized_people_owner" ON "authorized_people" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "bookings_date" ON "bookings" USING btree ("business_id","date");--> statement-breakpoint
 CREATE INDEX "bookings_stay" ON "bookings" USING btree ("business_id","arrive");--> statement-breakpoint
 CREATE UNIQUE INDEX "budgets_cat_month" ON "budgets" USING btree ("business_id","category","month");--> statement-breakpoint
@@ -638,6 +680,7 @@ CREATE INDEX "chat_channel" ON "chat_messages" USING btree ("business_id","chann
 CREATE UNIQUE INDEX "chat_reads_user_channel" ON "chat_reads" USING btree ("user_id","channel");--> statement-breakpoint
 CREATE INDEX "dogs_owner" ON "dogs" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "dogs_business" ON "dogs" USING btree ("business_id");--> statement-breakpoint
+CREATE INDEX "invoice_sends_invoice" ON "invoice_sends" USING btree ("invoice_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invoices_number" ON "invoices" USING btree ("business_id","number");--> statement-breakpoint
 CREATE INDEX "owners_business" ON "owners" USING btree ("business_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "training_attendance_once" ON "training_attendance" USING btree ("session_id","dog_id");--> statement-breakpoint

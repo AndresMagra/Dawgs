@@ -156,6 +156,8 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
         daycareCapacity: b!.daycareCapacity,
         inactiveAfterDays: b!.inactiveAfterDays,
         pickupTextsEnabled: b!.pickupTextsEnabled,
+        invoiceRemindersEnabled: b!.invoiceRemindersEnabled,
+        emailMode: ctx.mail.mode,
         plan: b!.plan,
         trialEndsAt: b!.trialEndsAt,
         stripeConnected: Boolean(b!.stripeAccountId),
@@ -186,6 +188,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
         requiredVaccines: z.array(z.string().min(1)).optional(),
         inactiveAfterDays: z.number().int().min(1).max(365).optional(),
         pickupTextsEnabled: z.boolean().optional(),
+        invoiceRemindersEnabled: z.boolean().optional(),
       }),
       req.body,
     );

@@ -156,9 +156,39 @@ export interface Invoice {
   lines: BillLine[];
   totalCents: number;
   status: 'open' | 'paid' | 'refunded' | 'partially_refunded' | 'void';
+  dueDate: string | null;
+  memo: string | null;
+  sentAt: string | null;
+  viewedAt: string | null;
+  remindersSent: number;
   createdAt: string;
   paidAt: string | null;
   ownerName?: string;
+}
+
+export interface InvoiceSend {
+  id: string;
+  channel: 'email' | 'sms';
+  kind: 'invoice' | 'reminder' | 'receipt';
+  to: string;
+  status: 'sent' | 'failed' | 'skipped';
+  error: string | null;
+  sentBy: string;
+  createdAt: string;
+}
+
+export interface AuthorizedPerson {
+  id: string;
+  ownerId: string;
+  name: string;
+  relation: string | null;
+  phone: string | null;
+  email: string | null;
+  photoUrl: string | null;
+  coOwner: boolean;
+  notes: string | null;
+  active: boolean;
+  hasLogin: boolean;
 }
 
 export interface PayOutcome {

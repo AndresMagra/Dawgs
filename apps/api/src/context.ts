@@ -10,6 +10,7 @@ import type { Database } from '@dawgs/db';
 import type { PaymentGateway } from './gateway.js';
 import type { SmsSender } from './sms.js';
 import type { PushSender } from './push.js';
+import type { Mailer } from './mail.js';
 import type { StripeConnect } from './tenants.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +32,8 @@ export interface AppContext {
   /** Deployment secret for encrypting per-daycare credentials at rest. */
   readonly secret: string | null;
   readonly push: PushSender;
+  /** Invoices, receipts and reminders by email. */
+  readonly mail: Mailer;
   /** Epoch ms. Tests move it; production is Date.now. */
   now(): number;
   /** Where the customer web app lives, for pay links in texts. */

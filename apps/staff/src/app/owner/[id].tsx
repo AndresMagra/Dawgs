@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { creditsText, day, money, time, type Card as SavedCard, type Dog, type Invoice, type Membership, type Owner, type PayOutcome, type SmsMessage, type Waiver } from '@dawgs/client';
-import { Avatar, Button, Card, Chip, Divider, Empty, Field, H1, H2, Line, Notice, P, Pick, Row, Screen, Segmented, Sheet, SignaturePad, useLoad } from '@dawgs/ui';
+import { creditsText, day, money, time, type Card as SavedCard, type Dog, type AuthorizedPerson, type Invoice, type Membership, type Owner, type SmsMessage, type Waiver, invoiceStage, todayKey } from '@dawgs/client';
+import { Avatar, Button, Card, Chip, Empty, Field, H1, H2, Line, Notice, P, Pick, Row, Screen, Segmented, Sheet, SignaturePad, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
-import { attempt, confirm, say } from '../../lib/alert';
+import { attempt, confirm } from '../../lib/alert';
 import { AddCardSheet, FormSheet, orNull } from '../../lib/sheets';
+import { InvoiceSheet, NewInvoiceSheet } from '../../lib/invoices';
+import { PeopleList } from '../../lib/people';
 
 interface OwnerDetail {
   owner: Owner;
@@ -15,16 +17,17 @@ interface OwnerDetail {
   memberships: Membership[];
   texts: SmsMessage[];
   waivers: { id: string; title: string; version: number; dogId: string | null; signedName: string; signedAt: string }[];
+  people: AuthorizedPerson[];
 }
 
 export default function OwnerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { business, isManager } = useSession();
+  const { business } = useSession();
   const tz = business?.timezone;
   const d = useLoad(() => api.get<OwnerDetail>(`/owners/${id}`), [id]);
-  const [tab, setTab] = useState<'dogs' | 'billing' | 'forms' | 'texts'>('dogs');
-  const [sheet, setSheet] = useState<null | 'edit' | 'card' | 'text' | 'sign' | 'dog'>(null);
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [tab, setTab] = useState<'dogs' | 'people' | 'billing' | 'forms' | 'texts'>('dogs');
+  const [sheet, setSheet] = useState<null | 'edit' | 'card' | 'text' | 'sign' | 'dog' | 'invoice'>(null);
+  const [invoice, setInvoice] = useState<string | null>(null);
   const o = d.data?.owner;
   if (!o) return <Screen>{d.error ? <Empty text={d.error} /> : <P muted>Loading…</P>}</Screen>;
   const data = d.data!;
@@ -56,6 +59,7 @@ export default function OwnerScreen() {
         onChange={setTab}
         options={[
           { value: 'dogs', label: 'Dogs' },
+          { value: 'people', label: `Pickup${data.people.length ? ` (${data.people.length})` : ''}` },
           { value: 'billing', label: 'Billing' },
           { value: 'forms', label: 'Forms' },
           { value: 'texts', label: 'Texts' },
@@ -99,6 +103,8 @@ export default function OwnerScreen() {
         </>
       ) : null}
 
+      {tab === 'people' ? <PeopleList base={`/owners/${o.id}/people`} people={data.people} onChange={reload} /> : null}
+
       {tab === 'billing' ? (
         <>
           <H2 right={<Button small title="Add card" onPress={() => setSheet('card')} />}>Cards</H2>
@@ -116,10 +122,10 @@ export default function OwnerScreen() {
               </Row>
             </Card>
           ))}
-          <H2>Invoices</H2>
+          <H2 right={<Button small variant="primary" title="New invoice" onPress={() => setSheet('invoice')} />}>Invoices</H2>
           {data.invoices.length === 0 ? <Empty text="No invoices yet." /> : null}
           {data.invoices.map((i) => (
-            <Card key={i.id} onPress={() => setInvoice(i)}>
+            <Card key={i.id} onPress={() => setInvoice(i.id)}>
               <Row between>
                 <View>
                   <P bold>
@@ -129,7 +135,7 @@ export default function OwnerScreen() {
                     {day(i.createdAt, tz)} · {i.lines.map((l) => l.text).slice(0, 2).join(', ')}
                   </P>
                 </View>
-                <Chip text={i.status.replace('_', ' ')} tone={i.status === 'open' ? 'warn' : i.status === 'paid' ? 'ok' : ''} />
+                <Chip {...invoiceStage(i, todayKey(tz ?? 'America/New_York'))} />
               </Row>
             </Card>
           ))}
@@ -160,7 +166,18 @@ export default function OwnerScreen() {
         </>
       ) : null}
 
-      <InvoiceSheet invoice={invoice} isManager={isManager} hasCard={data.cards.length > 0} onClose={() => setInvoice(null)} onDone={reload} />
+      <InvoiceSheet invoiceId={invoice} hasCard={data.cards.length > 0} onClose={() => setInvoice(null)} onDone={() => void d.reload()} />
+      <NewInvoiceSheet
+        open={sheet === 'invoice'}
+        owner={o}
+        dogs={data.dogs}
+        onClose={() => setSheet(null)}
+        onDone={(invId) => {
+          setSheet(null);
+          void d.reload();
+          setInvoice(invId);
+        }}
+      />
       <AddCardSheet ownerId={o.id} open={sheet === 'card'} onClose={() => setSheet(null)} onDone={reload} />
       <SignSheet open={sheet === 'sign'} owner={o} dogs={data.dogs} onClose={() => setSheet(null)} onDone={reload} />
       <FormSheet
@@ -212,62 +229,6 @@ export default function OwnerScreen() {
         }}
       />
     </Screen>
-  );
-}
-
-function InvoiceSheet({ invoice, isManager, hasCard, onClose, onDone }: { invoice: Invoice | null; isManager: boolean; hasCard: boolean; onClose: () => void; onDone: () => void }) {
-  const detail = useLoad(
-    () => (invoice ? api.get<{ payments: { id: string; method: string; amountCents: number; refundedCents: number; status: string }[] }>(`/invoices/${invoice.id}`) : Promise.resolve(null)),
-    [invoice?.id],
-  );
-  if (!invoice) return null;
-  async function pay(method: 'card' | 'cash') {
-    const r = await attempt(() => api.post<PayOutcome>(`/invoices/${invoice!.id}/pay`, { pay: { method } }));
-    if (r?.declined) return say('Card declined', r.declined.message);
-    if (r) onDone();
-  }
-  return (
-    <Sheet visible onClose={onClose} title={`Invoice #${invoice.number}`}>
-      {invoice.lines.map((l, i) => (
-        <Line key={i} left={l.text} right={money(l.amount)} muted={l.kind === 'credit'} />
-      ))}
-      <Divider />
-      <Line left="Total" right={money(invoice.totalCents)} bold />
-      {detail.data?.payments.map((p) => (
-        <Row key={p.id} between>
-          <P small muted>
-            Paid {money(p.amountCents)} by {p.method}
-            {p.refundedCents ? ` · refunded ${money(p.refundedCents)}` : ''}
-          </P>
-          {isManager && p.status === 'succeeded' && p.refundedCents < p.amountCents ? (
-            <Button
-              small
-              variant="ghost"
-              title="Refund"
-              onPress={async () => {
-                const left = p.amountCents - p.refundedCents;
-                if (!(await confirm('Refund?', `Refund ${money(left)} to the owner.`))) return;
-                if (await attempt(() => api.post(`/payments/${p.id}/refund`, { amountCents: left }))) onDone();
-              }}
-            />
-          ) : null}
-        </Row>
-      ))}
-      {invoice.status === 'open' ? (
-        <Row wrap>
-          <Button variant="primary" title="Charge card on file" disabled={!hasCard} onPress={() => pay('card')} />
-          <Button title="Cash" onPress={() => pay('cash')} />
-          <Button
-            title="Text a pay link"
-            onPress={async () => {
-              const r = await attempt(() => api.post<{ url: string | null }>(`/invoices/${invoice.id}/link`, { text: true }));
-              if (r) say('Pay link sent', r.url ?? '');
-            }}
-          />
-          {isManager ? <Button variant="ghost" title="Void" onPress={async () => (await confirm('Void invoice?', 'It will no longer be owed.')) && (await attempt(() => api.post(`/invoices/${invoice.id}/void`, {}))) && onDone()} /> : null}
-        </Row>
-      ) : null}
-    </Sheet>
   );
 }
 

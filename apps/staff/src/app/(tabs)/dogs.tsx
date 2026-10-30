@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { creditsText, type Dog } from '@dawgs/client';
+import type { Dog } from '@dawgs/client';
 import { Avatar, Button, Card, Chips, Empty, Field, Grid, P, Row, Screen, Segmented, useLoad } from '@dawgs/ui';
 import { api } from '../../lib/session';
 
@@ -47,7 +47,6 @@ export default function DogsScreen() {
                 ...d.flags,
               ]}
             />
-            <P small muted>{creditsText(d.wallet) || 'No credits'}</P>
           </Card>
         ))}
       </Grid>

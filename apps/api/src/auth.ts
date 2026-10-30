@@ -14,7 +14,7 @@
 import { and, eq, gt, lt } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { DawgsError, ValidationError } from '@dawgs/core';
-import { businesses, owners, sessions, users } from '@dawgs/db';
+import { authorizedPeople, businesses, owners, sessions, users } from '@dawgs/db';
 import type { AppContext } from './context.js';
 import { hashPassword, hashToken, randomToken, verifyPassword } from './crypto.js';
 
@@ -146,6 +146,14 @@ export async function signUpOwner(
     .select()
     .from(owners)
     .where(and(eq(owners.businessId, input.businessId), eq(owners.email, email)));
+  if (!owner) {
+    // A co-owner the account holder added signs up with their own email and lands on the same account.
+    const [co] = await ctx.db
+      .select({ ownerId: authorizedPeople.ownerId })
+      .from(authorizedPeople)
+      .where(and(eq(authorizedPeople.businessId, input.businessId), eq(authorizedPeople.email, email), eq(authorizedPeople.coOwner, true), eq(authorizedPeople.active, true)));
+    if (co) [owner] = await ctx.db.select().from(owners).where(eq(owners.id, co.ownerId));
+  }
   if (!owner) {
     [owner] = await ctx.db
       .insert(owners)

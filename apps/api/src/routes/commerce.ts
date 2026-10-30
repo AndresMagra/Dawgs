@@ -19,7 +19,8 @@ import {
 } from '@dawgs/db';
 import type { AppContext } from '../context.js';
 import { requireManager, requireStaff, sameBusiness } from '../auth.js';
-import { cents, parse, payShape, uuid, walletShape } from '../util.js';
+import { cents, dateKey, parse, payShape, uuid, walletShape } from '../util.js';
+import { createCustomInvoice, sendInvoice, sendsFor } from '../invoicing.js';
 import {
   createInvoice,
   createPayLink,
@@ -70,7 +71,57 @@ export function registerCommerceRoutes(app: FastifyInstance, ctx: AppContext) {
     const { id } = req.params as { id: string };
     const [inv] = await ctx.db.select().from(invoices).where(eq(invoices.id, id));
     sameBusiness(a, inv, 'invoice');
-    return { invoice: inv, payments: await ctx.db.select().from(payments).where(eq(payments.invoiceId, id)) };
+    const [o] = await ctx.db.select({ name: owners.name, email: owners.email, phone: owners.phone }).from(owners).where(eq(owners.id, inv!.ownerId));
+    return {
+      invoice: inv,
+      owner: o,
+      payments: await ctx.db.select().from(payments).where(eq(payments.invoiceId, id)),
+      sends: await sendsFor(ctx, id),
+    };
+  });
+
+  /** An invoice written by hand: any lines, a due date and a note, for any client. */
+  app.post('/invoices', async (req) => {
+    const a = requireStaff(req);
+    const b = parse(
+      z.object({
+        ownerId: uuid,
+        dogId: uuid.nullable().optional(),
+        lines: z.array(z.object({ text: z.string().min(1).max(200), amountCents: z.number().int() })).min(1).max(50),
+        dueDate: dateKey.nullable().optional(),
+        memo: z.string().max(1000).nullable().optional(),
+        send: z.object({ email: z.boolean(), sms: z.boolean(), message: z.string().max(500).nullable().optional() }).optional(),
+      }),
+      req.body,
+    );
+    const inv = await createCustomInvoice(ctx, { ...b, businessId: a.businessId, actor: a.name });
+    if (!b.send || (!b.send.email && !b.send.sms)) return { invoice: inv, sends: [] };
+    const sent = await sendInvoice(ctx, { businessId: a.businessId, invoiceId: inv.id, ...b.send, actor: a.name });
+    const [fresh] = await ctx.db.select().from(invoices).where(eq(invoices.id, inv.id));
+    return { invoice: fresh, ...sent };
+  });
+
+  /** Change the due date or note on an open invoice. Lines are fixed once written; void and re-issue instead. */
+  app.patch('/invoices/:id', async (req) => {
+    const a = requireStaff(req);
+    const { id } = req.params as { id: string };
+    const b = parse(z.object({ dueDate: dateKey.nullable().optional(), memo: z.string().max(1000).nullable().optional() }), req.body);
+    const [inv] = await ctx.db.select().from(invoices).where(eq(invoices.id, id));
+    sameBusiness(a, inv, 'invoice');
+    if (inv!.status !== 'open') throw new ValidationError('only open invoices can be changed');
+    const set = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined));
+    // A new due date starts the reminder schedule again.
+    if (b.dueDate !== undefined) Object.assign(set, { remindersSent: 0, lastReminderAt: null });
+    const [out] = await ctx.db.update(invoices).set(set).where(eq(invoices.id, id)).returning();
+    return out;
+  });
+
+  /** Email and/or text the invoice with a pay link. */
+  app.post('/invoices/:id/send', async (req) => {
+    const a = requireStaff(req);
+    const { id } = req.params as { id: string };
+    const b = parse(z.object({ email: z.boolean(), sms: z.boolean(), message: z.string().max(500).nullable().optional() }), req.body);
+    return sendInvoice(ctx, { businessId: a.businessId, invoiceId: id, ...b, actor: a.name });
   });
 
   app.post('/invoices/:id/pay', async (req) => {

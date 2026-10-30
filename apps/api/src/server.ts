@@ -13,6 +13,7 @@ import { MIGRATIONS_DIR, type AppContext } from './context.js';
 import { SimulatedGateway } from './gateway.js';
 import { ConsoleSms } from './sms.js';
 import { ExpoPush } from './push.js';
+import { ConsoleMail, ResendMail } from './mail.js';
 import { StripeConnect, tenantProviders } from './tenants.js';
 import { startScheduler } from './scheduler.js';
 import { seedDemo, DEMO_PASSWORD } from './seed.js';
@@ -45,6 +46,7 @@ export async function contextFromEnv(env: NodeJS.ProcessEnv): Promise<AppContext
     connect,
     secret,
     push: new ExpoPush(env.EXPO_ACCESS_TOKEN),
+    mail: env.RESEND_API_KEY && env.DAWGS_MAIL_FROM ? new ResendMail(env.RESEND_API_KEY, env.DAWGS_MAIL_FROM) : new ConsoleMail(),
     now: () => Date.now(),
     publicUrl: env.DAWGS_PUBLIC_URL ?? 'http://localhost:8081',
     ownerSignupOpen: env.DAWGS_OWNER_SIGNUP !== 'closed',

@@ -433,7 +433,7 @@ export async function previewBill(ctx: AppContext, businessId: string, visitId: 
  */
 export async function checkOut(
   ctx: AppContext,
-  args: { businessId: string; visitId: string; addOns?: readonly string[]; pay: PayInput; actor: string },
+  args: { businessId: string; visitId: string; addOns?: readonly string[]; pay: PayInput; actor: string; pickedUpBy?: string },
 ): Promise<PayOutcome & { visit: typeof visits.$inferSelect }> {
   const [v] = await ctx.db.select().from(visits).where(eq(visits.id, args.visitId));
   if (!v || v.businessId !== args.businessId) throw new NotFoundError('visit');
@@ -443,7 +443,7 @@ export async function checkOut(
   const now = ctx.now();
   const [closed] = await ctx.db
     .update(visits)
-    .set({ checkedOutAt: new Date(now), checkedOutBy: args.actor })
+    .set({ checkedOutAt: new Date(now), checkedOutBy: args.actor, pickedUpBy: args.pickedUpBy ?? null })
     .where(and(eq(visits.id, v.id), isNull(visits.checkedOutAt)))
     .returning();
   if (!closed) throw new ConflictError('already checked out');
@@ -465,7 +465,7 @@ export async function checkOut(
     lines,
   });
   await ctx.db.update(visits).set({ invoiceId: inv.id }).where(eq(visits.id, v.id));
-  await audit(ctx.db, args.businessId, args.actor, 'visit.checkout', `${dog!.name} went home, invoice #${inv.number}`);
+  await audit(ctx.db, args.businessId, args.actor, 'visit.checkout', `${dog!.name} went home${args.pickedUpBy ? ` with ${args.pickedUpBy}` : ''}, invoice #${inv.number}`);
   const out = await payInvoice(ctx, { businessId: args.businessId, invoiceId: inv.id, pay: args.pay, actor: args.actor });
   return { ...out, visit: closed };
 }

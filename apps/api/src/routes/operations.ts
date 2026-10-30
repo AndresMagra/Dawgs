@@ -24,6 +24,7 @@ import {
   setBookingStatus,
 } from '../ops.js';
 import { dogSummaries } from '../people.js';
+import { notifyPickup } from '../authorized.js';
 
 export const bookingShape = z.discriminatedUnion('service', [
   z.object({
@@ -124,8 +125,10 @@ export function registerOperationsRoutes(app: FastifyInstance, ctx: AppContext) 
   app.post('/visits/:id/checkout', async (req) => {
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
-    const b = parse(z.object({ addOns: z.array(z.string()).optional(), pay: payShape }), req.body);
-    return checkOut(ctx, { businessId: a.businessId, visitId: id, pay: b.pay, actor: a.name, ...(b.addOns ? { addOns: b.addOns } : {}) });
+    const b = parse(z.object({ addOns: z.array(z.string()).optional(), pay: payShape, pickedUpBy: z.string().min(1).max(120).optional() }), req.body);
+    const out = await checkOut(ctx, { businessId: a.businessId, visitId: id, pay: b.pay, actor: a.name, ...(b.addOns ? { addOns: b.addOns } : {}), ...(b.pickedUpBy ? { pickedUpBy: b.pickedUpBy } : {}) });
+    if (b.pickedUpBy) await notifyPickup(ctx, id, b.pickedUpBy);
+    return out;
   });
 
   app.get('/visits', async (req) => {
