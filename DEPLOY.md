@@ -19,7 +19,19 @@ On Railway:
    Password for every demo login: `dawgs-demo-2026` (manager `priya@happytails.test`,
    staff `marco@happytails.test`, owner `dana@example.com`).
 
-Optional: `RESEND_API_KEY` and `DAWGS_MAIL_FROM` to really send invoice emails.
+Optional: `RESEND_API_KEY` and `DAWGS_MAIL_FROM` to really send invoice,
+reminder and "forgot password" emails (without them, password resets can't reach anyone).
+
+Optional, recommended once real clients upload vaccine photos: object storage
+for photos and documents (Cloudflare R2 has no download fees; S3 or Backblaze B2
+work the same). Without it files are kept in Postgres, which is fine for a demo.
+   - `DAWGS_S3_ENDPOINT` (e.g. `https://<account id>.r2.cloudflarestorage.com`)
+   - `DAWGS_S3_BUCKET`, `DAWGS_S3_ACCESS_KEY_ID`, `DAWGS_S3_SECRET_ACCESS_KEY`
+   - `DAWGS_S3_REGION` (`auto` for R2, e.g. `us-east-1` for S3)
+   - `DAWGS_API_URL` only if the API is not at `DAWGS_PUBLIC_URL/api`
+
+The customer site is an installable web app (PWA): it needs HTTPS for the
+service worker and "Add to Home Screen", which Railway and Cloudflare provide.
 
 ## Production (later)
 

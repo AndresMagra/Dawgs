@@ -12,6 +12,7 @@
 
 import {
   boolean,
+  customType,
   date,
   doublePrecision,
   index,
@@ -29,6 +30,10 @@ import type { BillLine, HoursPolicy, Policies, PriceList, StaffPermissions, Wall
 const id = () => uuid('id').primaryKey().defaultRandom();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 const created = () => ts('created_at').notNull().defaultNow();
+const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array }>({
+  dataType: () => 'bytea',
+  fromDriver: (v) => (Buffer.isBuffer(v) ? v : Buffer.from(v)),
+});
 const biz = () =>
   uuid('business_id')
     .notNull()
@@ -100,6 +105,34 @@ export const sessions = pgTable('sessions', {
     .references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull().unique(),
   expiresAt: ts('expires_at').notNull(),
+  createdAt: created(),
+});
+
+/**
+ * Photos and documents (vaccine certificates, report-card photos, dog
+ * pictures). With object storage configured (S3 or Cloudflare R2) the bytes
+ * live there and `data` is null; otherwise they are kept here. Either way
+ * they're served at /files/<key>, where the key is long and random.
+ */
+export const storedFiles = pgTable('stored_files', {
+  key: text('key').primaryKey(),
+  businessId: biz(),
+  contentType: text('content_type').notNull(),
+  size: integer('size').notNull(),
+  data: bytea('data'),
+  uploadedBy: uuid('uploaded_by'),
+  createdAt: created(),
+});
+
+/** A "forgot password" link. Only the hash is stored; each link works once, for an hour. */
+export const passwordResets = pgTable('password_resets', {
+  id: id(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: ts('expires_at').notNull(),
+  usedAt: ts('used_at'),
   createdAt: created(),
 });
 
@@ -209,6 +242,14 @@ export const dogs = pgTable(
     allergies: jsonb('allergies').$type<string[]>().notNull().default([]),
     medications: jsonb('medications').$type<{ name: string; dose: string; when: string }[]>().notNull().default([]),
     defaultYardId: uuid('default_yard_id'),
+    /**
+     * New-dog temperament evaluation. Dogs on file before a daycare turned
+     * evaluations on count as passed; when `policies.requireEvaluation` is on,
+     * dogs added from the app or a lead start `pending` and owners can't book
+     * daycare or boarding until staff mark them `passed`.
+     */
+    evaluation: text('evaluation').$type<'pending' | 'passed' | 'failed'>().notNull().default('passed'),
+    evaluationNote: text('evaluation_note'),
     active: boolean('active').notNull().default(true),
     createdAt: created(),
   },
@@ -226,6 +267,8 @@ export const vaccines = pgTable('vaccines', {
   documentUrl: text('document_url'),
   /** Null until staff have looked at the certificate an owner uploaded. */
   verifiedBy: text('verified_by'),
+  /** Claimed by the scheduler when the owner is told this shot is about to expire. */
+  reminderSentAt: ts('reminder_sent_at'),
   createdAt: created(),
 });
 
@@ -285,6 +328,8 @@ export const bookings = pgTable(
     estimateCents: integer('estimate_cents'),
     /** Set when the booking came from a repeating weekly schedule. */
     seriesId: uuid('series_id'),
+    /** Claimed by the scheduler when the day-before reminder goes out. */
+    reminderSentAt: ts('reminder_sent_at'),
     createdAt: created(),
   },
   (t) => [index('bookings_date').on(t.businessId, t.date), index('bookings_stay').on(t.businessId, t.arrive), index('bookings_series').on(t.seriesId)],
@@ -1014,6 +1059,8 @@ export const schema = {
   businesses,
   users,
   sessions,
+  passwordResets,
+  storedFiles,
   pushTokens,
   owners,
   authorizedPeople,

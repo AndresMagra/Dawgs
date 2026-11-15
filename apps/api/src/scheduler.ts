@@ -1,6 +1,6 @@
 /**
  * Background work, once a minute: pickup texts, membership renewals and
- * retries, overdue-invoice reminders, and expired-session cleanup. Every job claims its rows before
+ * retries, overdue-invoice reminders, day-before booking and vaccine reminders, and expired-session cleanup. Every job claims its rows before
  * acting, so running on two servers at once does each thing once.
  */
 
@@ -11,6 +11,7 @@ import { purgeExpiredSessions } from './auth.js';
 import { runInvoiceReminders } from './invoicing.js';
 import { runLeadFollowUps } from './leads.js';
 import { runBirthdayTexts } from './messaging.js';
+import { runBookingReminders, runVaccineReminders } from './reminders.js';
 
 export async function tick(ctx: AppContext) {
   const pickupTexts = await runPickupTexts(ctx);
@@ -18,8 +19,10 @@ export async function tick(ctx: AppContext) {
   const invoiceReminders = await runInvoiceReminders(ctx);
   const leadFollowUps = await runLeadFollowUps(ctx);
   const birthdays = await runBirthdayTexts(ctx);
+  const bookingReminders = await runBookingReminders(ctx);
+  const vaccineReminders = await runVaccineReminders(ctx);
   await purgeExpiredSessions(ctx);
-  return { pickupTexts, memberships, invoiceReminders, leadFollowUps, birthdays };
+  return { pickupTexts, memberships, invoiceReminders, leadFollowUps, birthdays, bookingReminders, vaccineReminders };
 }
 
 export function startScheduler(ctx: AppContext, everyMs = 60_000) {

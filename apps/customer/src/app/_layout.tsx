@@ -12,7 +12,8 @@ function Gate() {
   // A pay link from a text or email, and the inquiry form on a daycare's website, work without an account.
   const isPublic = path.startsWith('/pay/') || path.startsWith('/inquire/');
   if (!ready) return <Loading />;
-  if (!user && !isPublic) return <Login />;
+  // A "forgot password" link opens /reset, which the sign-in screen handles even if someone is signed in on this device.
+  if ((!user && !isPublic) || path === '/reset') return <Login />;
   return (
     <ThemeProvider brand={business?.brandColor}>
       <Stack

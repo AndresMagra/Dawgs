@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { NotFoundError, ValidationError, addLocalDays, lateCancelFee, localDateKey, withPolicyDefaults } from '@dawgs/core';
 import {
   addOns,
+  businesses,
   bookings,
   dogs,
   invoices,
@@ -44,6 +45,7 @@ import { dogShape, ownerShape, resolveNewCard, vaccineShape } from './people.js'
 import { signWaiver } from './manage.js';
 import { audit } from '../audit.js';
 import { createSeries, listSeries, seriesShape, stopSeries } from '../recurring.js';
+import { keepUpload } from '../storage.js';
 import { addOnRequestShape, addOnsForBookings, addToBooking, cancelBookingAddOn } from '../addons.js';
 
 export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -107,9 +109,12 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
   // ─── Dogs ────────────────────────────────────────────────────────────────
   app.post('/me/dogs', async (req) => {
     const a = requireOwner(req);
-    const b = parse(dogShape.omit({ defaultYardId: true, active: true }), req.body);
+    const b = parse(dogShape.omit({ defaultYardId: true, active: true, evaluation: true, evaluationNote: true }), req.body);
     const clean = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined));
-    const [d] = await ctx.db.insert(dogs).values({ ...clean, name: b.name, ownerId: a.ownerId, businessId: a.businessId }).returning();
+    const [biz] = await ctx.db.select({ policies: businesses.policies }).from(businesses).where(eq(businesses.id, a.businessId));
+    const evaluation = withPolicyDefaults(biz?.policies).requireEvaluation ? ('pending' as const) : ('passed' as const);
+    if (b.photoUrl) clean.photoUrl = await keepUpload(ctx, a.businessId, b.photoUrl, a.userId);
+    const [d] = await ctx.db.insert(dogs).values({ ...clean, name: b.name, ownerId: a.ownerId, businessId: a.businessId, evaluation }).returning();
     await audit(ctx.db, a.businessId, a.name, 'dog.create', `${d!.name} added by owner in the app`);
     return d;
   });
@@ -118,8 +123,10 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
     const a = requireOwner(req);
     const { id } = req.params as { id: string };
     await myDog(a.ownerId, id);
-    const b = parse(dogShape.omit({ defaultYardId: true, active: true }).partial(), req.body);
+    const b = parse(dogShape.omit({ defaultYardId: true, active: true, evaluation: true, evaluationNote: true }).partial(), req.body);
     const set = Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined));
+    if (b.photoUrl) set.photoUrl = await keepUpload(ctx, a.businessId, b.photoUrl, a.userId);
+    if (!Object.keys(set).length) return (await ctx.db.select().from(dogs).where(eq(dogs.id, id)))[0];
     const [d] = await ctx.db.update(dogs).set(set).where(eq(dogs.id, id)).returning();
     return d;
   });
@@ -143,14 +150,14 @@ export function registerMeRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   /** An owner's upload counts once staff have checked the certificate. */
-  app.post('/me/dogs/:id/vaccines', { bodyLimit: 5_000_000 }, async (req) => {
+  app.post('/me/dogs/:id/vaccines', { bodyLimit: 12_000_000 }, async (req) => {
     const a = requireOwner(req);
     const { id } = req.params as { id: string };
     const d = await myDog(a.ownerId, id);
     const b = parse(vaccineShape, req.body);
     const [v] = await ctx.db
       .insert(vaccines)
-      .values({ businessId: a.businessId, dogId: id, name: b.name, expiresAt: new Date(`${b.expiresOn}T23:59:59Z`), documentUrl: b.documentUrl ?? null })
+      .values({ businessId: a.businessId, dogId: id, name: b.name, expiresAt: new Date(`${b.expiresOn}T23:59:59Z`), documentUrl: (await keepUpload(ctx, a.businessId, b.documentUrl, a.userId)) ?? null })
       .returning();
     await audit(ctx.db, a.businessId, a.name, 'vaccine.upload', `${d.name}: ${b.name} uploaded for review`);
     return v;

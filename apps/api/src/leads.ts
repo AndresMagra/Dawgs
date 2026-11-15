@@ -6,7 +6,7 @@
 
 import { and, desc, eq, inArray, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { localDateKey, NotFoundError, ValidationError } from '@dawgs/core';
+import { localDateKey, NotFoundError, ValidationError, withPolicyDefaults } from '@dawgs/core';
 import { businesses, dogs, leadActivities, leads, owners, smsMessages, users } from '@dawgs/db';
 import type { AppContext } from './context.js';
 import { ownerByReferralCode, rewardReferral } from './growth.js';
@@ -157,7 +157,9 @@ export async function convertLead(ctx: AppContext, args: { businessId: string; l
   }
   let dogId: string | null = null;
   if (l.dogName) {
-    const [d] = await ctx.db.insert(dogs).values({ businessId: args.businessId, ownerId: owner!.id, name: l.dogName, breed: l.dogBreed }).returning();
+    const [biz] = await ctx.db.select({ policies: businesses.policies }).from(businesses).where(eq(businesses.id, args.businessId));
+    const evaluation = withPolicyDefaults(biz?.policies).requireEvaluation ? ('pending' as const) : ('passed' as const);
+    const [d] = await ctx.db.insert(dogs).values({ businessId: args.businessId, ownerId: owner!.id, name: l.dogName, breed: l.dogBreed, evaluation }).returning();
     dogId = d!.id;
   }
   await ctx.db.update(leads).set({ ownerId: owner!.id, stage: 'won', followUpOn: null, updatedAt: new Date(ctx.now()) }).where(eq(leads.id, l.id));

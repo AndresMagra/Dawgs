@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { Button, Card, Field, H1, Notice, P, Segmented, useTheme } from '@dawgs/ui';
+import { router } from 'expo-router';
+import { Button, Card, Field, ForgotPassword, H1, Notice, P, ResetPassword, Segmented, useResetToken, useTheme } from '@dawgs/ui';
 import { api, useSession } from './session';
 
 /**
@@ -10,8 +11,10 @@ import { api, useSession } from './session';
  */
 export default function Login() {
   const t = useTheme();
-  const { signIn, signUp } = useSession();
+  const { signIn, signUp, acceptToken } = useSession();
   const [mode, setMode] = useState<'in' | 'up'>('in');
+  const [forgot, setForgot] = useState(false);
+  const [resetToken, clearReset] = useResetToken();
   const [f, setF] = useState({ business: '', name: '', email: '', phone: '', password: '' });
   const [daycare, setDaycare] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +56,23 @@ export default function Login() {
         <View style={{ width: '100%', maxWidth: 420, alignSelf: 'center', gap: 16 }}>
           <H1>Dawgs</H1>
           <P muted>Book daycare and boarding, follow walks live, see report cards and pay, all in one place.</P>
+          {resetToken ? (
+            <ResetPassword
+              reset={async (password) => {
+                const r = await api.post<{ token: string }>('/auth/reset', { token: resetToken, password });
+                clearReset();
+                await acceptToken(r.token);
+                router.replace('/');
+              }}
+              onCancel={() => {
+                clearReset();
+                router.replace('/');
+              }}
+            />
+          ) : forgot ? (
+            <ForgotPassword initialEmail={f.email} send={(email) => api.post('/auth/forgot', { email, app: 'customer' })} onBack={() => setForgot(false)} />
+          ) : (
+          <>
           <Segmented value={mode} onChange={setMode} options={[{ value: 'in', label: 'Sign in' }, { value: 'up', label: 'Create account' }]} />
           <Card>
             {mode === 'up' ? (
@@ -63,11 +83,22 @@ export default function Login() {
                 <Field label="Mobile (for pickup texts)" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
               </>
             ) : null}
-            <Field label="Email" value={f.email} onChangeText={set('email')} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />
-            <Field label={mode === 'up' ? 'Choose a password (10+ characters)' : 'Password'} value={f.password} onChangeText={set('password')} secureTextEntry onSubmitEditing={() => void submit()} />
+            <Field label="Email" value={f.email} onChangeText={set('email')} autoCapitalize="none" keyboardType="email-address" autoComplete="email" textContentType="emailAddress" />
+            <Field
+              label={mode === 'up' ? 'Choose a password (8+ characters)' : 'Password'}
+              value={f.password}
+              onChangeText={set('password')}
+              secureTextEntry
+              autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
+              textContentType={mode === 'up' ? 'newPassword' : 'password'}
+              onSubmitEditing={() => void submit()}
+            />
             {error ? <Notice tone="bad" text={error} /> : null}
             <Button title={mode === 'in' ? 'Sign in' : 'Create account'} variant="primary" disabled={mode === 'up' && !daycare} onPress={submit} />
+            {mode === 'in' ? <Button title="Forgot password?" variant="ghost" onPress={() => setForgot(true)} /> : null}
           </Card>
+          </>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

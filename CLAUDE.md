@@ -119,6 +119,27 @@ staff `marco@happytails.test` (also jess, tasha, leo), owners
   up joins the same owner record. Removing someone deactivates them and closes
   a co-owner's login. Check-out records `visits.picked_up_by`.
 - **Vaccines** count only once staff verify them (owner uploads wait).
+- **Reminders:** `reminders.ts`. Day-before text+push for confirmed bookings and
+  a heads-up `vaccineReminderDays` before a verified shot expires (skipped if a
+  newer certificate is on file); from 10:00 local, claimed via `reminder_sent_at`.
+- **Evaluations:** `dogs.evaluation` (pending/passed/failed, default passed).
+  With `policies.requireEvaluation`, dogs added by owners or from leads start
+  pending and owner bookings are refused until staff mark them passed.
+- **Passwords:** `/auth/forgot` (same answer whether or not the email exists)
+  emails a one-hour, one-use link (`password_resets`, hash only) to `/reset` or
+  `/staff/reset`; using it signs out every other session. Wrong passwords are
+  braked per email+IP (`security.ts`); every response carries safety headers.
+- **Files:** `storage.ts`. Photos/PDFs arrive as data URLs (or via `POST
+  /uploads`), are stored in S3/R2 when `DAWGS_S3_*` is set, else in
+  `stored_files`, and rows keep only a `/files/<random key>` URL. Fields that
+  take a photo call `keepUpload`; never put a data URL on a row.
+- **Import:** `importing.ts` + core `readImport`: managers bring clients over
+  from a CSV (dry run first); owners match by email, phone, then name; dogs
+  never duplicate; old-system vaccine dates count as verified.
+- **Customer website = PWA:** `apps/customer/public/` holds the HTML template,
+  manifest, icons, `sw.js` (network-first pages, offline page, caches only
+  hashed build files) and `offline.html`. Bump `VERSION` in sw.js when its
+  caching changes.
 - **Waivers** are versioned; editing the text asks everyone to sign again; a
   signature stores the exact text and its SHA-256.
 - The starter waiver is a template; a lawyer must review it before real use.

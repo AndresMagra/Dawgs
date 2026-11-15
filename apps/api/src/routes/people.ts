@@ -27,6 +27,7 @@ import { ensureStripeCustomer, removeCard, saveCard, setDefaultCard } from '../p
 import { grantCredits, spendCredits, walletOf } from '../credits.js';
 import { audit } from '../audit.js';
 import { sendReportCards } from '../messaging.js';
+import { keepUpload } from '../storage.js';
 
 export const ownerShape = z.object({
   name: z.string().min(1),
@@ -64,13 +65,16 @@ export const dogShape = z.object({
   medications: z.array(z.object({ name: z.string(), dose: z.string(), when: z.string() })).optional(),
   defaultYardId: uuid.nullable().optional(),
   active: z.boolean().optional(),
+  /** Staff only: the temperament evaluation result (owners can't set it). */
+  evaluation: z.enum(['pending', 'passed', 'failed']).optional(),
+  evaluationNote: z.string().max(2000).nullable().optional(),
 });
 
 export const vaccineShape = z.object({
   name: z.string().min(1),
   expiresOn: dateKey,
   // A link, or a photo of the certificate taken in the app as a data URL (kept under ~4 MB).
-  documentUrl: z.string().max(4_500_000).nullable().optional(),
+  documentUrl: z.string().max(11_500_000).nullable().optional(),
 });
 
 const clean = <T extends object>(o: T) =>
@@ -197,7 +201,7 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
     sameBusiness(a, o, 'owner');
     const [d] = await ctx.db
       .insert(dogs)
-      .values({ ...clean(b), name: b.name, ownerId: b.ownerId, businessId: a.businessId })
+      .values({ ...clean(b), photoUrl: (await keepUpload(ctx, a.businessId, b.photoUrl, a.userId)) ?? null, name: b.name, ownerId: b.ownerId, businessId: a.businessId })
       .returning();
     await audit(ctx.db, a.businessId, a.name, 'dog.create', `${d!.name} added for ${o!.name}`);
     return d;
@@ -224,11 +228,13 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
     const b = parse(dogShape.partial(), req.body);
     const [d] = await ctx.db.select().from(dogs).where(eq(dogs.id, id));
     sameBusiness(a, d, 'dog');
-    const [out] = await ctx.db.update(dogs).set(clean(b)).where(eq(dogs.id, id)).returning();
+    const set = clean(b);
+    if (b.photoUrl) set.photoUrl = await keepUpload(ctx, a.businessId, b.photoUrl, a.userId);
+    const [out] = await ctx.db.update(dogs).set(set).where(eq(dogs.id, id)).returning();
     return out;
   });
 
-  app.post('/dogs/:id/vaccines', async (req) => {
+  app.post('/dogs/:id/vaccines', { bodyLimit: 12_000_000 }, async (req) => {
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
     const b = parse(vaccineShape, req.body);
@@ -241,7 +247,7 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
         dogId: id,
         name: b.name,
         expiresAt: new Date(`${b.expiresOn}T23:59:59Z`),
-        documentUrl: b.documentUrl ?? null,
+        documentUrl: (await keepUpload(ctx, a.businessId, b.documentUrl, a.userId)) ?? null,
         verifiedBy: a.name,
       })
       .returning();
@@ -267,7 +273,7 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ok: true };
   });
 
-  app.post('/dogs/:id/notes', async (req) => {
+  app.post('/dogs/:id/notes', { bodyLimit: 12_000_000 }, async (req) => {
     const a = requireStaff(req);
     const { id } = req.params as { id: string };
     const b = parse(
@@ -301,7 +307,7 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext) {
         dogId: id,
         kind: b.kind,
         body: b.body,
-        photoUrl: b.photoUrl ?? null,
+        photoUrl: (await keepUpload(ctx, a.businessId, b.photoUrl, a.userId)) ?? null,
         visitId: b.visitId ?? null,
         details: b.details ?? null,
         author: a.name,

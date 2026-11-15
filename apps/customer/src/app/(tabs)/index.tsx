@@ -4,6 +4,7 @@ import { creditsText, dateKeyLabel, money, time, type Booking, type Invoice, typ
 import { Avatar, Button, Card, Chip, Chips, Empty, Grid, H1, H2, Notice, P, Row, Screen, useLoad } from '@dawgs/ui';
 import { api, useSession } from '../../lib/session';
 import { useMe } from '../../lib/me';
+import { InstallBanner } from '../../lib/InstallBanner';
 
 export default function Home() {
   const { user, business } = useSession();
@@ -22,6 +23,7 @@ export default function Home() {
     <Screen refreshing={me.loading && !!m}>
       <H1>Hi {user?.name.split(' ')[0]}</H1>
       <P muted>{business?.name}</P>
+      <InstallBanner />
       {m && m.formsToSign > 0 ? (
         <Card onPress={() => router.push('/forms')} style={{ borderColor: '#dc2626', borderWidth: 2 }}>
           <P bold>Please sign {m.formsToSign === 1 ? 'a form' : `${m.formsToSign} forms`}</P>

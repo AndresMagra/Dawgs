@@ -70,6 +70,20 @@ export function PoliciesForm({ value, onSave }: { value: Policies; onSave: (p: P
           onChangeText={(v) => setOnline({ daysAhead: Math.min(365, Math.max(1, Math.round(Number(v) || 1))) })}
           keyboardType="number-pad"
         />
+        <Toggle label="New dogs need a passed temperament evaluation first" value={p.requireEvaluation} onChange={(v) => set('requireEvaluation', v)} />
+        <P small muted>Dogs already on file count as passed. New dogs added in the app or from a lead start as "evaluation pending"; mark them passed on the dog's page.</P>
+      </Card>
+      <Card>
+        <H2>Reminders</H2>
+        <Toggle label="Text owners the day before a booking" value={p.bookingReminders} onChange={(v) => set('bookingReminders', v)} />
+        <Field
+          label="Remind owners before a vaccine expires (days)"
+          value={p.vaccineReminderDays ? String(p.vaccineReminderDays) : ''}
+          onChangeText={(v) => set('vaccineReminderDays', Math.min(60, Math.max(0, Math.round(Number(v) || 0))))}
+          keyboardType="number-pad"
+          placeholder="0 = off"
+        />
+        <P small muted>Reminders go out from 10 AM your time and also appear in the owner's app.</P>
       </Card>
       <Card>
         <H2>Friendly texts</H2>

@@ -13,6 +13,9 @@ const TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
@@ -47,8 +50,10 @@ export function serveSites(app: FastifyInstance, sites: WebSite[]) {
       // Not a file: a route inside the app.
     }
     const type = TYPES[extname(target)] ?? 'application/octet-stream';
-    // Built assets have hashed names and can be cached for long; the page itself must not be.
-    const cache = target.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable';
+    // Built assets have hashed names and can be cached for long; the page, the
+    // service worker, the manifest and icons keep their names, so they must revalidate.
+    const hashed = rel.startsWith('/_expo/static/') || rel.startsWith('/assets/');
+    const cache = target !== file || !hashed ? 'no-cache' : 'public, max-age=31536000, immutable';
     return reply.header('content-type', type).header('cache-control', cache).send(await readFile(target));
   });
 }

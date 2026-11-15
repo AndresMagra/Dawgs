@@ -31,6 +31,12 @@ export interface Policies {
   reportCardTexts: boolean;
   /** Daycare credits given to a client when someone they referred becomes a client. */
   referralRewardCredits: number;
+  /** Text (and push) owners the day before a booked daycare day or boarding arrival. */
+  bookingReminders: boolean;
+  /** Tell owners this many days before a verified vaccine expires; 0 turns it off. */
+  vaccineReminderDays: number;
+  /** New dogs must pass a temperament evaluation before owners can book daycare or boarding online. */
+  requireEvaluation: boolean;
 }
 
 export const DEFAULT_POLICIES: Policies = {
@@ -48,6 +54,9 @@ export const DEFAULT_POLICIES: Policies = {
   birthdayTexts: false,
   reportCardTexts: false,
   referralRewardCredits: 0,
+  bookingReminders: true,
+  vaccineReminderDays: 14,
+  requireEvaluation: false,
 };
 
 /** Older rows and partial edits are filled from the defaults, so every rule always has a value. */

@@ -24,13 +24,16 @@ import { registerPickupRoutes } from './routes/pickup.js';
 import { registerLeadRoutes } from './routes/leads.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerGrowthRoutes } from './routes/growth.js';
+import { registerFileRoutes } from './routes/files.js';
 import { serveSites, type WebSite } from './web.js';
+import { registerSecurityHeaders } from './security.js';
 
 const STATUS: Record<string, number> = {
   VALIDATION: 400,
   UNAUTHORIZED: 401,
   PAYMENT_FAILED: 402,
   FORBIDDEN: 403,
+  TOO_MANY: 429,
   NOT_FOUND: 404,
   CONFLICT: 409,
   STRIPE_NOT_CONNECTED: 409,
@@ -42,6 +45,7 @@ export async function buildApp(
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 1_000_000, trustProxy: true });
   await app.register(cors, { origin: options.corsOrigins ?? true });
+  registerSecurityHeaders(app);
 
   // Keep the raw JSON body: Stripe signs the exact bytes it sent.
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
@@ -88,6 +92,7 @@ export async function buildApp(
       registerLeadRoutes(api, ctx);
       registerReportRoutes(api, ctx);
       registerGrowthRoutes(api, ctx);
+      registerFileRoutes(api, ctx);
     },
     { prefix: options.apiPrefix ?? '' },
   );

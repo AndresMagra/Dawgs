@@ -37,7 +37,7 @@ function DogDetail({ id }: { id: string }) {
     const r = camera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     const a = r.assets?.[0];
     if (!r.canceled && a?.base64) {
-      if (a.base64.length > 4_000_000) return say('That photo is too large', 'Try again a little further away, or crop it.');
+      if (a.base64.length > 10_500_000) return say('That photo is too large', 'Try again a little further away, or crop it.');
       setPhoto(`data:${a.mimeType ?? 'image/jpeg'};base64,${a.base64}`);
     }
   }
@@ -53,6 +53,8 @@ function DogDetail({ id }: { id: string }) {
           <P small>{creditsText(dog.wallet) || 'No credits'}</P>
         </View>
       </Row>
+      {dog.evaluation === 'pending' ? <Notice tone="info" text={`New dogs start with a short temperament evaluation. Call ${business?.name ?? 'the daycare'}${business?.phone ? ` at ${business.phone}` : ''} to set one up; after that you can book online.`} /> : null}
+      {dog.evaluation === 'failed' ? <Notice tone="warn" text={`Please call ${business?.name ?? 'the daycare'} about booking ${dog.name}.`} /> : null}
       {!dog.canEnter ? <Notice tone="warn" text={dog.waiversMissing.length ? `Please sign: ${dog.waiversMissing.join(', ')}` : dog.vaccinesAwaitingReview ? "Thanks! We're checking the records you sent." : 'Please add current vaccine records so we can book.'} /> : null}
       <Segmented
         value={tab}

@@ -12,6 +12,7 @@ import type { SmsSender } from './sms.js';
 import type { PushSender } from './push.js';
 import type { Mailer } from './mail.js';
 import type { StripeConnect } from './tenants.js';
+import type { FileStore } from './storage.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const MIGRATIONS_DIR = join(HERE, '../../../packages/db/migrations');
@@ -36,6 +37,10 @@ export interface AppContext {
   readonly mail: Mailer;
   /** Epoch ms. Tests move it; production is Date.now. */
   now(): number;
+  /** Photos and documents: object storage when configured, else the database. */
+  readonly files: FileStore;
+  /** Absolute address of this API (with its prefix), for the URLs of stored files. */
+  readonly filesUrl: string;
   /** Where the customer web app lives, for pay links in texts. */
   readonly publicUrl: string | null;
   /** Anyone may create an owner account from the customer app. */

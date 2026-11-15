@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- viewport-fit=cover lets the app paint under the iPhone notch and home bar (the app pads itself with safe-area insets).
+         Zoom stays allowed: people with low vision need it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Dawgs</title>
+    <meta name="description" content="Book daycare and boarding, follow walks live, see report cards and pay your daycare, from any phone, tablet or computer." />
+    <meta name="theme-color" content="#2f6f4f" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111412" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- Installable: Android/Chrome/Edge read the manifest; iPhone and iPad read the apple-* tags. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Dawgs" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- The react-native-web style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        overflow: hidden;
+        margin: 0;
+        background: #f5f6f2;
+        /* Stop iOS enlarging text on rotate, and the 300 ms double-tap delay on old phones. */
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #111412;
+        }
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        /* Mobile Safari's toolbar grows and shrinks; dvh follows it where supported. */
+        height: 100dvh;
+        flex: 1;
+      }
+      .boot {
+        margin: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        font: 600 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #5b6660;
+      }
+      .boot img {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .boot img {
+          animation: boot 1.2s ease-in-out infinite alternate;
+        }
+      }
+      @keyframes boot {
+        to {
+          transform: scale(0.92);
+          opacity: 0.7;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>
+      <div style="padding: 24px; font-family: sans-serif">Dawgs needs JavaScript turned on. Please enable it in your browser settings, or call your daycare.</div>
+    </noscript>
+    <!-- Shown until the app starts (React replaces it), so slow phones see something at once. -->
+    <div id="root"><div class="boot" role="status"><img src="/icon-192.png" alt="" />Loading…</div></div>
+    <script>
+      // Offline page and faster repeat visits. Skipped on localhost so development always gets fresh files.
+      if ('serviceWorker' in navigator && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
+  </body>
+</html>

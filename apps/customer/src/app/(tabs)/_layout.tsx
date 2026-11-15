@@ -20,7 +20,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('⌂') }} />
       <Tabs.Screen name="book" options={{ title: 'Book', tabBarIcon: icon('▤') }} />
       <Tabs.Screen name="walks" options={{ title: 'Walks', tabBarIcon: icon('➜') }} />
-      <Tabs.Screen name="shop" options={{ title: 'Packs & classes', tabBarIcon: icon('★') }} />
+      <Tabs.Screen name="shop" options={{ title: 'Packs & classes', tabBarLabel: 'Shop', tabBarIcon: icon('★') }} />
       <Tabs.Screen name="account" options={{ title: 'Account', tabBarIcon: icon('●') }} />
     </Tabs>
   );

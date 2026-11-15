@@ -159,6 +159,13 @@ export async function createBooking(
     if (!rules.enabled) throw new ValidationError(`${b.name} takes bookings by phone or at the desk`);
     const first = input.service === 'daycare' ? input.date : input.arrive;
     if (first > addLocalDays(today, rules.daysAhead)) throw new ValidationError(`bookings open ${rules.daysAhead} days ahead`);
+    if (withPolicyDefaults(b.policies).requireEvaluation && dog.evaluation !== 'passed') {
+      throw new ValidationError(
+        dog.evaluation === 'failed'
+          ? `please call ${b.name} about booking ${dog.name}`
+          : `${dog.name} needs a temperament evaluation before the first visit; call ${b.name}${b.phone ? ` at ${b.phone}` : ''} to set one up`,
+      );
+    }
   }
   // With auto-approve on, an owner's booking is confirmed straight away when there is room.
   const ownerStatus: BookingStatus = rules.autoApprove ? 'confirmed' : 'requested';

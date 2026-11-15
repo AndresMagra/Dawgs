@@ -7,6 +7,7 @@ import { MemoryPush } from '../src/push.js';
 import { ConsoleMail } from '../src/mail.js';
 import { tenantProviders } from '../src/tenants.js';
 import { seedDemo, DEMO_PASSWORD } from '../src/seed.js';
+import { DatabaseFiles } from '../src/storage.js';
 
 /** A whole Dawgs on in-process Postgres, with a clock the test moves. */
 export async function makeApp(startAt = Date.parse('2026-11-04T13:00:00Z')) {
@@ -24,6 +25,8 @@ export async function makeApp(startAt = Date.parse('2026-11-04T13:00:00Z')) {
     push,
     mail,
     now: () => clock.t,
+    files: new DatabaseFiles(database.db),
+    filesUrl: 'https://api.dawgs.test',
     publicUrl: 'https://app.dawgs.test',
     ownerSignupOpen: true,
     daycareSignupOpen: true,
