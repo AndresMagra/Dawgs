@@ -13,6 +13,8 @@ interface Session {
   signUp(input: { business: string; name: string; email: string; phone?: string; password: string }): Promise<void>;
   signOut(): Promise<void>;
   refresh(): Promise<void>;
+  /** Sign in with a session token the server just issued (after a password reset). */
+  acceptToken(token: string): Promise<void>;
 }
 
 const Ctx = createContext<Session | null>(null);
@@ -89,6 +91,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUser(null);
     },
     refresh,
+    async acceptToken(token) {
+      await api.setToken(token);
+      await refresh();
+    },
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

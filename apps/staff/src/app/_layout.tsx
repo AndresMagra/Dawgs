@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Loading, ThemeProvider, useTheme } from '@dawgs/ui';
@@ -8,8 +8,10 @@ import Login from '../lib/Login';
 function Gate() {
   const { ready, user, business } = useSession();
   const t = useTheme();
+  const path = usePathname();
   if (!ready) return <Loading />;
-  if (!user) return <Login />;
+  // A "forgot password" link opens /reset, handled by the sign-in screen.
+  if (!user || path === '/reset') return <Login />;
   return (
     <ThemeProvider brand={business?.brandColor}>
       <Stack

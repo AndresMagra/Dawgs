@@ -73,6 +73,19 @@ export default function DogScreen() {
       {!dog.canEnter ? (
         <Notice tone="bad" text={dog.waiversMissing.length ? `Can't come in until the owner signs: ${dog.waiversMissing.join(', ')}` : "Can't come in: vaccines are not current."} />
       ) : null}
+      {dog.evaluation !== 'passed' ? (
+        <Card>
+          <Row between wrap>
+            <Chip text={dog.evaluation === 'pending' ? 'Evaluation pending' : 'Did not pass evaluation'} tone={dog.evaluation === 'pending' ? 'warn' : 'bad'} />
+            <Row>
+              <Button small variant="primary" title="Passed" onPress={async () => { if (await attempt(() => api.patch(`/dogs/${dog.id}`, { evaluation: 'passed' }))) reload(); }} />
+              {dog.evaluation === 'pending' ? <Button small title="Didn't pass" onPress={async () => { if (await attempt(() => api.patch(`/dogs/${dog.id}`, { evaluation: 'failed' }))) reload(); }} /> : null}
+            </Row>
+          </Row>
+          <P small muted>{dog.evaluation === 'pending' ? 'The owner can book online once you mark the temperament evaluation passed. Staff can still book the evaluation day.' : 'The owner is asked to call you before booking.'}</P>
+          {dog.evaluationNote ? <P small>{dog.evaluationNote}</P> : null}
+        </Card>
+      ) : null}
       <Chips items={dog.flags} />
       <Row wrap>
         <Button variant="primary" title="Book" disabled={!dog.canEnter} onPress={() => setSheet('book')} />

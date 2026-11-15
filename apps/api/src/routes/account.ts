@@ -17,7 +17,9 @@ import {
   createSession,
   login,
   publicUser,
+  requestPasswordReset,
   requireManager,
+  resetPassword,
   requireStaff,
   sameBusiness,
   signUpOwner,
@@ -28,6 +30,7 @@ import { cents, hhmm, parse } from '../util.js';
 import { saveTwilio } from '../tenants.js';
 import { audit } from '../audit.js';
 import { createDaycare } from '../daycares.js';
+import { importClients } from '../importing.js';
 
 const pricesShape = z.object({
   halfDay: cents,
@@ -73,7 +76,24 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
   // ─── Sign-in ─────────────────────────────────────────────────────────────
   app.post('/auth/login', { config: { public: true } }, async (req) => {
     const b = parse(z.object({ email: z.string().email(), password: z.string().min(1), businessId: z.string().uuid().optional() }), req.body);
-    return login(ctx, b.email, b.password, b.businessId);
+    return login(ctx, b.email, b.password, b.businessId, req.ip);
+  });
+
+  /** Managers: bring clients over from another system's CSV export. */
+  app.post('/import/clients', { bodyLimit: 8_000_000 }, async (req) => {
+    const a = requireManager(req);
+    const b = parse(z.object({ csv: z.string().min(1).max(7_500_000), dryRun: z.boolean().default(true) }), req.body);
+    return importClients(ctx, { businessId: a.businessId, csv: b.csv, dryRun: b.dryRun, actor: a.name });
+  });
+
+  app.post('/auth/forgot', { config: { public: true } }, async (req) => {
+    const b = parse(z.object({ email: z.string().email(), app: z.enum(['customer', 'staff']).default('customer') }), req.body);
+    return requestPasswordReset(ctx, { email: b.email, app: b.app, ip: req.ip });
+  });
+
+  app.post('/auth/reset', { config: { public: true } }, async (req) => {
+    const b = parse(z.object({ token: z.string().min(20).max(200), password: z.string() }), req.body);
+    return resetPassword(ctx, b.token, b.password);
   });
 
   app.post('/auth/signup', { config: { public: true } }, async (req) => {
@@ -213,6 +233,9 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AppContext) {
             birthdayTexts: z.boolean(),
             reportCardTexts: z.boolean(),
             referralRewardCredits: z.number().int().min(0).max(20),
+            bookingReminders: z.boolean(),
+            vaccineReminderDays: z.number().int().min(0).max(60),
+            requireEvaluation: z.boolean(),
           })
           .partial()
           .optional(),

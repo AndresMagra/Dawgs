@@ -18,6 +18,7 @@ const ITEMS: { href: string; title: string; text: string; manager?: boolean; nee
   { href: '/money', title: 'Money', text: 'Income, expenses, budgets, retail stock', needs: 'seeMoney' },
   { href: '/reports', title: 'Reports', text: 'Revenue, occupancy, top clients, exports', needs: 'seeMoney' },
   { href: '/campaigns', title: 'Campaigns', text: 'Text or email a group of clients, and see who came back', manager: true },
+  { href: '/import', title: 'Import clients', text: 'Move owners, dogs and vaccines over from PetExec, Gingr or a spreadsheet', manager: true },
   { href: '/settings', title: 'Settings', text: 'Prices, hours, yards, Stripe, Twilio', manager: true },
   { href: '/log', title: 'Activity log', text: 'Who did what, and when', manager: true },
 ];

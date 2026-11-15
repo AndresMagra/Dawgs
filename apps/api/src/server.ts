@@ -17,6 +17,7 @@ import { ConsoleMail, ResendMail } from './mail.js';
 import { StripeConnect, tenantProviders } from './tenants.js';
 import { startScheduler } from './scheduler.js';
 import { seedDemo, DEMO_PASSWORD } from './seed.js';
+import { fileStoreFromEnv } from './storage.js';
 
 export async function contextFromEnv(env: NodeJS.ProcessEnv): Promise<AppContext> {
   const database = await openDatabase({
@@ -48,6 +49,9 @@ export async function contextFromEnv(env: NodeJS.ProcessEnv): Promise<AppContext
     push: new ExpoPush(env.EXPO_ACCESS_TOKEN),
     mail: env.RESEND_API_KEY && env.DAWGS_MAIL_FROM ? new ResendMail(env.RESEND_API_KEY, env.DAWGS_MAIL_FROM) : new ConsoleMail(),
     now: () => Date.now(),
+    files: fileStoreFromEnv(database.db, env),
+    // One-box deploys serve the API under /api next to the websites.
+    filesUrl: env.DAWGS_API_URL ?? (env.DAWGS_WEB_DIR && env.DAWGS_PUBLIC_URL ? `${env.DAWGS_PUBLIC_URL.replace(/\/$/, '')}/api` : `http://localhost:${env.PORT ?? 3001}`),
     publicUrl: env.DAWGS_PUBLIC_URL ?? 'http://localhost:8081',
     ownerSignupOpen: env.DAWGS_OWNER_SIGNUP !== 'closed',
     daycareSignupOpen: env.DAWGS_DAYCARE_SIGNUP === 'open',

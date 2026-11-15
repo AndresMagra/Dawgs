@@ -89,6 +89,9 @@ export interface Dog {
   card: { id: string; brand: string; last4: string } | null;
   active: boolean;
   defaultYardId: string | null;
+  /** New-dog temperament evaluation; see `Policies.requireEvaluation`. */
+  evaluation: 'pending' | 'passed' | 'failed';
+  evaluationNote: string | null;
 }
 
 export interface Owner {
@@ -525,4 +528,10 @@ export interface Policies {
   reportCardTexts: boolean;
   /** Daycare credits for a client whose referral becomes a client; 0 turns rewards off. */
   referralRewardCredits: number;
+  /** Day-before text and push for confirmed bookings. */
+  bookingReminders: boolean;
+  /** Days before a verified vaccine expires to remind the owner; 0 is off. */
+  vaccineReminderDays: number;
+  /** New dogs need a passed temperament evaluation before owners can book online. */
+  requireEvaluation: boolean;
 }

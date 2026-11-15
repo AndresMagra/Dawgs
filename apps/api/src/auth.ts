@@ -11,10 +11,12 @@
  * `businessId` on every row they load.
  */
 
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { DawgsError, ValidationError, permissionsFor, type Permission } from '@dawgs/core';
-import { authorizedPeople, businesses, owners, sessions, users } from '@dawgs/db';
+import { authorizedPeople, businesses, owners, passwordResets, sessions, users } from '@dawgs/db';
+import { escapeHtml } from './mail.js';
+import { loginBrake, loginIpBrake, resetEmailBrake, resetIpBrake } from './security.js';
 import type { AppContext } from './context.js';
 import { hashPassword, hashToken, randomToken, verifyPassword } from './crypto.js';
 
@@ -103,15 +105,91 @@ export async function createSession(ctx: AppContext, userId: string) {
   return token;
 }
 
-export async function login(ctx: AppContext, email: string, password: string, businessId?: string) {
+export class TooManyError extends DawgsError {
+  constructor(message: string) {
+    super('TOO_MANY', message);
+  }
+}
+
+export async function login(ctx: AppContext, email: string, password: string, businessId?: string, ip = 'local') {
+  const key = `${ip}|${email.trim().toLowerCase()}`;
+  if (loginBrake.blocked(key, ctx.now()) || loginIpBrake.blocked(ip, ctx.now())) {
+    throw new TooManyError('too many tries; wait 15 minutes or use "Forgot password"');
+  }
   const rows = await ctx.db
     .select()
     .from(users)
     .where(and(eq(users.email, email.trim().toLowerCase()), eq(users.active, true)));
   const candidates = businessId ? rows.filter((u) => u.businessId === businessId) : rows;
   const user = candidates.find((u) => verifyPassword(password, u.passwordHash));
-  if (!user) throw new UnauthorizedError('wrong email or password');
+  if (!user) {
+    loginBrake.hit(key, ctx.now());
+    loginIpBrake.hit(ip, ctx.now());
+    throw new UnauthorizedError('wrong email or password');
+  }
+  loginBrake.clear(key);
   return { token: await createSession(ctx, user.id), user: publicUser(user) };
+}
+
+export const RESET_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * "Forgot password": email a one-hour, one-use link to every active login
+ * with this address that belongs to the app asking (owners for the customer
+ * app, staff and managers for the staff app). The answer is the same whether
+ * or not the email is known, so nobody can probe for accounts.
+ */
+export async function requestPasswordReset(ctx: AppContext, input: { email: string; app: 'customer' | 'staff'; ip: string }) {
+  const email = input.email.trim().toLowerCase();
+  const now = ctx.now();
+  if (resetIpBrake.blocked(input.ip, now) || resetEmailBrake.blocked(email, now)) return { ok: true as const };
+  resetIpBrake.hit(input.ip, now);
+  resetEmailBrake.hit(email, now);
+  const rows = await ctx.db
+    .select({ u: users, b: businesses })
+    .from(users)
+    .innerJoin(businesses, eq(businesses.id, users.businessId))
+    .where(and(eq(users.email, email), eq(users.active, true)));
+  const base = (ctx.publicUrl ?? '').replace(/\/$/, '') + (input.app === 'staff' ? '/staff' : '');
+  for (const { u, b } of rows) {
+    if ((input.app === 'staff') !== (u.role !== 'owner')) continue;
+    const token = randomToken();
+    await ctx.db.insert(passwordResets).values({ userId: u.id, tokenHash: hashToken(token), expiresAt: new Date(now + RESET_TTL_MS) });
+    const link = `${base}/reset?token=${encodeURIComponent(token)}`;
+    const first = u.name.split(' ')[0] ?? u.name;
+    await ctx.mail
+      .send({
+        to: u.email,
+        fromName: b.name,
+        replyTo: b.email,
+        subject: `Reset your ${b.name} password`,
+        text: `Hi ${first},\n\nSomeone (hopefully you) asked to reset the password for your ${b.name} account. Open this link within an hour to choose a new one:\n\n${link}\n\nIf it wasn't you, ignore this email; your password stays the same.`,
+        html: `<p>Hi ${escapeHtml(first)},</p><p>Someone (hopefully you) asked to reset the password for your ${escapeHtml(b.name)} account. This link works once, for an hour:</p><p><a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 20px;background:${escapeHtml(b.brandColor ?? '#2f6f4f')};color:#fff;border-radius:8px;text-decoration:none">Choose a new password</a></p><p style="color:#666">If it wasn't you, ignore this email; your password stays the same.</p>`,
+      })
+      .catch(() => undefined);
+  }
+  return { ok: true as const };
+}
+
+/** Use a reset link: new password, every other session signed out, and a fresh session here. */
+export async function resetPassword(ctx: AppContext, token: string, password: string) {
+  checkPassword(password);
+  const [r] = await ctx.db
+    .select()
+    .from(passwordResets)
+    .where(and(eq(passwordResets.tokenHash, hashToken(token)), gt(passwordResets.expiresAt, new Date(ctx.now()))));
+  if (!r || r.usedAt) throw new ValidationError('this link has expired or was already used; ask for a new one');
+  const [claimed] = await ctx.db
+    .update(passwordResets)
+    .set({ usedAt: new Date(ctx.now()) })
+    .where(and(eq(passwordResets.id, r.id), isNull(passwordResets.usedAt)))
+    .returning({ id: passwordResets.id });
+  if (!claimed) throw new ValidationError('this link was already used; ask for a new one');
+  const [u] = await ctx.db.select().from(users).where(eq(users.id, r.userId));
+  if (!u || !u.active) throw new ValidationError('this account is closed; ask the daycare');
+  await ctx.db.update(users).set({ passwordHash: hashPassword(password) }).where(eq(users.id, u.id));
+  await ctx.db.delete(sessions).where(eq(sessions.userId, u.id));
+  return { token: await createSession(ctx, u.id), user: publicUser(u) };
 }
 
 export function publicUser(u: typeof users.$inferSelect) {
